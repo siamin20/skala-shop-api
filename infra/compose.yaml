@@ -1,0 +1,53 @@
+# 로컬 개발용 인프라
+#
+# 애플리케이션 자체는 여기서 띄우지 않는다. IDE나 ./gradlew bootRun으로 실행하고
+# DB와 Redis만 컨테이너로 올린다. 재시작이 빠르고 디버거를 붙이기 쉽기 때문이다.
+# 애플리케이션까지 컨테이너로 묶는 구성은 P6에서 별도로 추가한다.
+#
+# 실행: docker compose -f infra/compose.yaml up -d
+# 종료: docker compose -f infra/compose.yaml down          (데이터 유지)
+#      docker compose -f infra/compose.yaml down -v        (데이터까지 삭제)
+
+name: skala-shop
+
+services:
+  postgres:
+    # 운영과 같은 메이저 버전을 쓴다. 락 동작이 버전마다 미묘하게 다르므로
+    # 동시성 테스트의 신뢰성을 위해 버전을 고정한다. (D10)
+    image: postgres:16-alpine
+    container_name: skala-shop-postgres
+    environment:
+      POSTGRES_DB: skalashop
+      POSTGRES_USER: skalashop
+      POSTGRES_PASSWORD: skalashop
+      # 한글 데이터 정렬과 비교를 위해 UTF-8로 초기화한다.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      # 컨테이너가 뜬 것과 DB가 접속을 받는 것은 다르다.
+      # 이 검사가 없으면 애플리케이션이 먼저 붙어 연결 실패로 죽는다.
+      test: ["CMD-SHELL", "pg_isready -U skalashop -d skalashop"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    # 선착순 이벤트 수량을 DECR로 차감하기 위해 쓴다. (P4)
+    # DB 락으로는 처리량이 떨어지는 구간을 비교하기 위한 대조군이다.
+    image: redis:7-alpine
+    container_name: skala-shop-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    # 이벤트 카운터는 유실돼도 DB로 복구할 수 있으므로 영속화를 끈다.
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  postgres-data:
