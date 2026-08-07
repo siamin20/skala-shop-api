@@ -64,6 +64,15 @@ public enum ErrorCode {
      */
     CONCURRENT_MODIFICATION(HttpStatus.CONFLICT, "다른 요청과 충돌했습니다. 다시 시도해 주세요"),
 
+    /**
+     * 비관적 락을 정해진 시간 안에 얻지 못했다. (P4)
+     *
+     * <p>서버 결함이 아니라 그 순간 같은 행에 요청이 몰린 것이므로 5xx가 아니다.
+     * 대기를 무한정 두면 커넥션이 반납되지 않아 풀이 마르고, 락과 무관한 API까지 멈춘다.
+     * 그래서 일정 시간이 지나면 기다리는 대신 이 코드로 돌려보내고 클라이언트가 다시 요청하게 한다.
+     */
+    LOCK_TIMEOUT(HttpStatus.CONFLICT, "요청이 몰려 처리하지 못했습니다. 다시 시도해 주세요"),
+
     /** 어디에도 해당하지 않는 서버 오류. 상세 내용은 응답에 노출하지 않고 로그에만 남긴다. */
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 오류가 발생했습니다");
 
