@@ -26,14 +26,24 @@ version = '0.0.1-SNAPSHOT'
 description = 'SKALA SHOP REST API'
 
 java {
-    // D11: 명세는 sourceCompatibility = '17'이지만 Java 21을 쓴다.
-    // 가상 스레드로 처리량을 비교하는 실험(P4)에 필요하기 때문이다.
+    // D11: 명세(538p)가 지정한 Java 17을 그대로 따른다.
     //
-    // sourceCompatibility 대신 toolchain을 쓰는 이유는, 개발자마다 설치된 JDK가 달라도
-    // Gradle이 지정한 버전을 직접 찾아 쓰기 때문에 빌드 재현성이 높기 때문이다.
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
-    }
+    // toolchain으로 21을 강제하면 JDK 17만 설치된 환경에서는 컴파일 전에
+    // "No matching toolchain"으로 빌드 자체가 실패한다. 채점 환경을 알 수 없으므로
+    // 실행되지 않을 위험을 감수할 이유가 없다.
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
+tasks.withType(JavaCompile).configureEach {
+    // release는 sourceCompatibility보다 강하다. 바이트코드 버전을 낮출 뿐 아니라
+    // Java 18~21에서 추가된 API를 컴파일 시점에 보이지 않게 만든다.
+    // 그래서 JDK 21로 빌드해도 17에서 못 도는 코드를 실수로 넣을 수가 없다.
+    //
+    // 가상 스레드는 이 제약과 무관하게 쓸 수 있다. spring.threads.virtual.enabled는
+    // API 호출이 아니라 런타임 속성이라, JDK 21에서 실행하면 켜지고 17에서는 조용히 무시된다.
+    options.release = 17
+    options.encoding = 'UTF-8'
 }
 
 configurations {
