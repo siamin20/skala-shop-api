@@ -1,0 +1,105 @@
+package com.sk.skala.shopapi.customer.domain;
+
+import com.sk.skala.shopapi.global.common.Money;
+import com.sk.skala.shopapi.global.error.BusinessException;
+import com.sk.skala.shopapi.global.error.ErrorCode;
+
+import jakarta.persistence.AttributeOverride;
+import jakarta.persistence.Column;
+import jakarta.persistence.Embedded;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+
+/**
+ * 쇼핑몰 고객.
+ *
+ * <p>식별자가 자동 증가 숫자가 아니라 사용자가 정한 문자열 {@code customerId}다.
+ * 과제 명세를 따른 것이며, 로그인 아이디가 곧 기본 키가 된다.
+ *
+ * <p>D2: 포인트는 {@link #deductPoint(Money)}와 {@link #refundPoint(Money)}로만 바뀐다.
+ * Setter가 없으므로 "잔액 검사 없이 포인트를 깎는" 코드는 작성 자체가 불가능하다.
+ * 규칙을 서비스에 두면 새 호출 경로가 생길 때마다 검사를 다시 넣어야 하고, 한 번만 빠뜨려도 잔액이 깨진다.
+ *
+ * <p>비밀번호는 BCrypt 해시로만 저장한다(D5). 이 클래스는 해싱을 직접 하지 않고
+ * 이미 해시된 값을 받는다. 암호화 방식을 아는 것은 도메인이 아니라 인증 서비스의 몫이다.
+ *
+ * <p>{@code @Version}을 이용한 낙관적 락은 P4에서 추가한다.
+ */
+@Entity
+@Table(name = "customer")
+@Getter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+public class Customer {
+
+    /** 로그인 아이디이자 기본 키. */
+    @Id
+    @Column(name = "customer_id", length = 50)
+    private String customerId;
+
+    /**
+     * BCrypt 해시.
+     *
+     * <p>BCrypt 결과는 항상 60자다. 넉넉히 100으로 잡아 알고리즘을 바꿔도 견디게 한다.
+     */
+    @Column(name = "customer_password", nullable = false, length = 100)
+    private String password;
+
+    /** 보유 포인트. 주문 시 차감되고 취소 시 환급된다. */
+    @Embedded
+    @AttributeOverride(name = "amount", column = @Column(name = "customer_point", nullable = false))
+    private Money point;
+
+    /**
+     * 새 고객을 만든다.
+     *
+     * @param customerId     로그인 아이디. 비어 있을 수 없다
+     * @param hashedPassword 이미 BCrypt로 해시된 비밀번호. 평문을 넘기면 안 된다
+     * @param initialPoint   가입 시 지급할 초기 포인트
+     * @throws IllegalArgumentException 아이디나 비밀번호가 비어 있는 경우
+     */
+    public Customer(String customerId, String hashedPassword, Money initialPoint) {
+        if (customerId == null || customerId.isBlank()) {
+            throw new IllegalArgumentException("고객 아이디는 비어 있을 수 없습니다");
+        }
+        if (hashedPassword == null || hashedPassword.isBlank()) {
+            throw new IllegalArgumentException("비밀번호는 비어 있을 수 없습니다");
+        }
+        this.customerId = customerId;
+        this.password = hashedPassword;
+        this.point = initialPoint == null ? Money.ZERO : initialPoint;
+    }
+
+    /**
+     * 포인트를 차감한다.
+     *
+     * <p>잔액 검사를 이 메서드 안에서 하는 이유는, 호출하는 쪽에 맡기면 검사를 빠뜨린 경로가
+     * 하나만 생겨도 잔액이 음수가 되기 때문이다. 여기서 막으면 어느 경로로 들어와도 안전하다.
+     *
+     * <p>부족한 금액을 메시지에 담아 사용자가 얼마를 더 채워야 하는지 알 수 있게 한다.
+     *
+     * @param amount 차감할 금액
+     * @throws BusinessException 잔액이 부족하면 {@link ErrorCode#INSUFFICIENT_POINT}
+     */
+    public void deductPoint(Money amount) {
+        if (point.isLessThan(amount)) {
+            throw new BusinessException(
+                    ErrorCode.INSUFFICIENT_POINT,
+                    "필요 %s, 보유 %s".formatted(amount, point));
+        }
+        this.point = point.minus(amount);
+    }
+
+    /** 주문 취소로 포인트를 돌려준다. */
+    public void refundPoint(Money amount) {
+        this.point = point.plus(amount);
+    }
+
+    /** 이 고객이 {@code customerId}의 주인인지 확인한다. 남의 자원 접근을 막을 때 쓴다. */
+    public boolean isOwner(String customerId) {
+        return this.customerId.equals(customerId);
+    }
+}
