@@ -71,9 +71,8 @@ public class Product {
      * @throws IllegalArgumentException 상품명이 비었거나 가격이 0원인 경우
      */
     public Product(String name, Money price) {
-        validateName(name);
         validatePrice(price);
-        this.name = name;
+        this.name = normalizeName(name);
         this.price = price;
     }
 
@@ -83,8 +82,7 @@ public class Product {
      * @throws IllegalArgumentException 상품명이 비어 있는 경우
      */
     public void changeName(String name) {
-        validateName(name);
-        this.name = name;
+        this.name = normalizeName(name);
     }
 
     /**
@@ -105,10 +103,18 @@ public class Product {
         return price.times(quantity);
     }
 
-    private void validateName(String name) {
+    /**
+     * 상품명을 검증하고 앞뒤 공백을 제거한다.
+     *
+     * <p>공백을 다듬지 않으면 {@code "무선마우스"}와 {@code "무선마우스 "}가 서로 다른 값이 되어
+     * {@code product_name}의 유니크 제약을 그대로 통과한다. 목록에는 같아 보이는 상품이 두 줄로 뜨고,
+     * 중복 검사도 뚫린다. 저장 직전 한 곳에서 다듬어 생성과 변경 양쪽에 같은 규칙을 적용한다.
+     */
+    private String normalizeName(String name) {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("상품명은 비어 있을 수 없습니다");
         }
+        return name.trim();
     }
 
     private void validatePrice(Money price) {

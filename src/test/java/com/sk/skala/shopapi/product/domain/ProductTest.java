@@ -69,6 +69,17 @@ class ProductTest {
     }
 
     @Test
+    @DisplayName("상품명 앞뒤 공백을 제거해 저장한다")
+    void trimName() {
+        // 다듬지 않으면 "무선마우스"와 "무선마우스 "가 유니크 제약을 통과해 중복 등록된다
+        Product product = new Product("  무선마우스  ", Money.of(15_000));
+        assertThat(product.getName()).isEqualTo("무선마우스");
+
+        product.changeName("\tUSB허브\n");
+        assertThat(product.getName()).isEqualTo("USB허브");
+    }
+
+    @Test
     @DisplayName("수량만큼의 총액을 계산한다")
     void totalPriceOf() {
         Product product = new Product("USB허브", Money.of(39_000));
