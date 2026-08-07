@@ -1,0 +1,2 @@
+// 루트 프로젝트 이름. 빌드 산출물 이름(skala-shop-api-0.0.1-SNAPSHOT.jar)이 여기서 결정된다.
+rootProject.name = 'skala-shop-api'

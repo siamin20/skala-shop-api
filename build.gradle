@@ -1,0 +1,83 @@
+/*
+ * skala-shop-api 빌드 스크립트
+ *
+ * 의존성은 Phase 단위로 추가한다. 지금은 P0~P1(도메인·API)에 필요한 것만 있고,
+ * Security는 P2, Testcontainers는 P3, Redis는 P4에서 추가한다.
+ * 한 번에 다 넣지 않는 이유는, 각 의존성이 어느 기능 때문에 들어왔는지
+ * 커밋 이력만 봐도 알 수 있게 하기 위해서다.
+ */
+
+plugins {
+    id 'java'
+
+    // 실행 가능한 jar 패키징(bootJar)과 bootRun 태스크를 제공한다.
+    id 'org.springframework.boot' version '3.3.5'
+
+    // Spring Boot BOM을 적용해 의존성 버전을 자동으로 맞춘다.
+    // 덕분에 아래 dependencies에서 대부분 버전을 적지 않아도 된다.
+    id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'com.sk.skala'
+version = '0.0.1-SNAPSHOT'
+description = 'SKALA SHOP REST API'
+
+java {
+    // toolchain을 쓰면 개발자마다 설치된 JDK가 달라도 Gradle이 지정한 버전을 찾아 쓴다.
+    // sourceCompatibility만 지정하는 방식보다 재현성이 높다.
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+configurations {
+    compileOnly {
+        // Lombok을 컴파일 시점에만 쓰고 런타임 산출물에는 넣지 않기 위한 설정이다.
+        extendsFrom annotationProcessor
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // --- 웹 계층 ---
+    // REST 컨트롤러, 내장 Tomcat, Jackson 직렬화를 포함한다.
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+
+    // @Valid / @NotBlank 같은 Bean Validation.
+    // 요청 DTO에서 입력값을 검증하기 위해 필요하다. (D3: 엔티티를 요청 본문으로 쓰지 않는다)
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+
+    // --- 영속성 계층 ---
+    // Spring Data JPA와 Hibernate.
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+
+    // 개발과 단위 테스트용 인메모리 DB.
+    // 동시성 통합 테스트는 락 동작이 달라서 H2를 쓰지 않는다. (D10)
+    runtimeOnly 'com.h2database:h2'
+
+    // 운영 DB. 로컬에서는 infra/compose.yaml로 띄운다.
+    runtimeOnly 'org.postgresql:postgresql'
+
+    // --- 문서화 ---
+    // 실행 후 /swagger-ui.html 에서 API를 직접 호출해볼 수 있다.
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0'
+
+    // --- 보일러플레이트 축소 ---
+    // Getter, RequiredArgsConstructor 등에만 쓴다.
+    // 도메인 객체에는 @Setter와 @Data를 쓰지 않는다. (D2: Setter를 열지 않는다)
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+
+    // --- 테스트 ---
+    // JUnit 5, AssertJ, Mockito, MockMvc를 포함한다.
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+    // JUnit 4가 아니라 JUnit 5(Jupiter)로 실행한다.
+    useJUnitPlatform()
+}
