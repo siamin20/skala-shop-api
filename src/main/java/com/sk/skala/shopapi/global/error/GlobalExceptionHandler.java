@@ -17,6 +17,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -78,6 +80,33 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         ErrorCode errorCode = e.getErrorCode();
         log.warn("업무 규칙 위반: {} - {}", errorCode.name(), e.getMessage());
         return toProblemDetail(errorCode, e.getMessage());
+    }
+
+    /**
+     * 쿼리 파라미터나 경로 변수의 검증 실패를 처리한다.
+     *
+     * <p>{@code @Valid @RequestBody}가 실패하면 {@code MethodArgumentNotValidException}이지만,
+     * {@code @Validated}가 붙은 클래스의 메서드 파라미터({@code @Min}, {@code @Max} 등)가 실패하면
+     * 이 예외가 온다. 둘은 별개라 따로 잡지 않으면 파라미터 검증이 500으로 나간다.
+     *
+     * <p>필드명은 {@code getProducts.size}처럼 메서드 이름이 앞에 붙어 오므로 마지막 마디만 남긴다.
+     * 클라이언트에게 서버의 메서드 이름을 알려줄 이유가 없다.
+     */
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ProblemDetail handleConstraintViolation(ConstraintViolationException e) {
+        Map<String, String> errors = new LinkedHashMap<>();
+        for (ConstraintViolation<?> violation : e.getConstraintViolations()) {
+            String path = violation.getPropertyPath().toString();
+            String field = path.substring(path.lastIndexOf('.') + 1);
+            errors.putIfAbsent(field, violation.getMessage());
+        }
+
+        log.warn("파라미터 검증 실패: {}", errors);
+
+        ProblemDetail problem = toProblemDetail(
+                ErrorCode.INVALID_PARAMETER, ErrorCode.INVALID_PARAMETER.getMessage());
+        problem.setProperty("errors", errors);
+        return problem;
     }
 
     /**
