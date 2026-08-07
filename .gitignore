@@ -1,10 +1,12 @@
 # Java / Gradle
 build/
 .gradle/
-!gradle/wrapper/gradle-wrapper.jar
 *.class
-*.jar
 *.log
+
+# 빌드 산출물 jar는 무시하되 Gradle Wrapper는 커밋한다
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
 
 # Node
 node_modules/

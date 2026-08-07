@@ -1,0 +1,5 @@
+# gradlew는 Unix 셸 스크립트다. Windows에서 체크아웃해도 CRLF로 바뀌지 않게 고정한다.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.jar binary
+gradlew text eol=lf
