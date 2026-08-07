@@ -27,8 +27,19 @@ public enum ErrorCode {
     /** 로그인은 되어 있으나 이 자원에 접근할 권한이 없다. */
     ACCESS_DENIED(HttpStatus.FORBIDDEN, "접근 권한이 없습니다"),
 
-    /** 상품·고객·주문을 찾을 수 없다. */
+    /** 상품·고객·주문을 찾을 수 없다. 존재하지 않는 경로로 들어온 요청도 여기에 해당한다. */
     DATA_NOT_FOUND(HttpStatus.NOT_FOUND, "요청한 데이터를 찾을 수 없습니다"),
+
+    /**
+     * 이 경로가 지원하지 않는 HTTP 메서드로 들어왔다.
+     *
+     * <p>스프링이 던지는 프레임워크 예외를 우리 형식으로 옮기기 위한 코드다.
+     * 이런 코드가 없으면 클라이언트가 분기할 {@code code} 없이 상태 코드만 받게 된다.
+     */
+    METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED, "지원하지 않는 요청 방식입니다"),
+
+    /** 지원하지 않는 {@code Content-Type}으로 요청이 들어왔다. */
+    UNSUPPORTED_MEDIA_TYPE(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "지원하지 않는 형식입니다"),
 
     /** 상품명이나 고객 ID가 이미 있다. */
     DATA_DUPLICATED(HttpStatus.CONFLICT, "이미 존재하는 데이터입니다"),
