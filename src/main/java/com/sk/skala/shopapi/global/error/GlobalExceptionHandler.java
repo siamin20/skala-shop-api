@@ -4,6 +4,7 @@ import java.net.URI;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -17,6 +18,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -78,6 +81,54 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         ErrorCode errorCode = e.getErrorCode();
         log.warn("업무 규칙 위반: {} - {}", errorCode.name(), e.getMessage());
         return toProblemDetail(errorCode, e.getMessage());
+    }
+
+    /**
+     * 쿼리 파라미터나 경로 변수의 검증 실패를 처리한다.
+     *
+     * <p>{@code @Valid @RequestBody}가 실패하면 {@code MethodArgumentNotValidException}이지만,
+     * {@code @Validated}가 붙은 클래스의 메서드 파라미터({@code @Min}, {@code @Max} 등)가 실패하면
+     * 이 예외가 온다. 둘은 별개라 따로 잡지 않으면 파라미터 검증이 500으로 나간다.
+     *
+     * <p>필드명은 {@code getProducts.size}처럼 메서드 이름이 앞에 붙어 오므로 마지막 마디만 남긴다.
+     * 클라이언트에게 서버의 메서드 이름을 알려줄 이유가 없다.
+     */
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ProblemDetail handleConstraintViolation(ConstraintViolationException e) {
+        Map<String, String> errors = new LinkedHashMap<>();
+        for (ConstraintViolation<?> violation : e.getConstraintViolations()) {
+            String path = violation.getPropertyPath().toString();
+            String field = path.substring(path.lastIndexOf('.') + 1);
+            errors.putIfAbsent(field, violation.getMessage());
+        }
+
+        log.warn("파라미터 검증 실패: {}", errors);
+
+        ProblemDetail problem = toProblemDetail(
+                ErrorCode.INVALID_PARAMETER, ErrorCode.INVALID_PARAMETER.getMessage());
+        problem.setProperty("errors", errors);
+        return problem;
+    }
+
+    /**
+     * DB 제약 위반을 처리한다.
+     *
+     * <p>서비스가 저장 전에 중복을 검사해도 <b>검사와 저장 사이에 다른 요청이 끼어들면</b>
+     * 유니크 제약에서 터진다. 애플리케이션 검사는 좋은 메시지를 위한 것이고,
+     * 실제 최종 방어선은 DB다. 그 방어선이 작동했을 때 500을 내보내면
+     * 클라이언트 잘못이 서버 장애로 둔갑하고 5xx 알람이 잘못 울린다.
+     *
+     * <p>이 애플리케이션에서 발생 가능한 제약 위반은 사실상 유니크 위반뿐이다.
+     * 외래 키는 삭제 순서를 코드에서 지키고 있고({@code CustomerService.deleteCustomer}),
+     * NOT NULL은 도메인 생성자가 먼저 막는다. 그래서 {@link ErrorCode#DATA_DUPLICATED}로 옮긴다.
+     *
+     * <p>원인 메시지는 응답에 담지 않는다. 제약 이름이나 테이블 구조가 노출된다.
+     * 대신 로그에는 스택을 남겨 어떤 제약이 걸렸는지 추적할 수 있게 한다.
+     */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ProblemDetail handleDataIntegrityViolation(DataIntegrityViolationException e) {
+        log.warn("DB 제약 위반", e);
+        return toProblemDetail(ErrorCode.DATA_DUPLICATED, ErrorCode.DATA_DUPLICATED.getMessage());
     }
 
     /**

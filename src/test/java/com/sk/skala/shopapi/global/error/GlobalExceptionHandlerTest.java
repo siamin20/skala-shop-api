@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -67,6 +68,18 @@ class GlobalExceptionHandlerTest {
 
             @PostMapping("/test/validate")
             void validate(@Valid @RequestBody SampleRequest request) {
+            }
+
+            /**
+             * DB 제약 위반을 흉내 낸다.
+             *
+             * <p>서비스가 미리 중복을 검사해도, 검사와 저장 사이에 다른 요청이 끼어들면
+             * 유니크 제약에서 터진다. 그때 나가는 예외가 이것이다.
+             */
+            @PostMapping("/test/integrity-violation")
+            void integrityViolation() {
+                throw new DataIntegrityViolationException(
+                        "could not execute statement [Unique index or primary key violation]");
             }
         }
     }
@@ -125,6 +138,16 @@ class GlobalExceptionHandlerTest {
                             .contentType(MediaType.TEXT_PLAIN)
                             .content("name=skala"))
                     .andExpect(status().isUnsupportedMediaType());
+        }
+
+        @Test
+        @DisplayName("DB 제약 위반은 500이 아니라 409다")
+        void dataIntegrityViolation() throws Exception {
+            // 서비스의 사전 중복 검사와 저장 사이에 다른 요청이 끼어들면 여기로 온다.
+            // 클라이언트가 같은 이름으로 다시 보낸 것이므로 서버 장애(5xx)가 아니다.
+            mockMvc.perform(post("/test/integrity-violation"))
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.code").value("DATA_DUPLICATED"));
         }
 
         @Test
