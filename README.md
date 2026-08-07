@@ -7,7 +7,7 @@
 
 ## 기술 스택
 
-- Java 21, Spring Boot 3.3, Spring Security, Spring Data JPA
+- Java 17 (컴파일) / Java 21 (권장 런타임), Spring Boot 3.3.0, Spring Security, Spring Data JPA
 - PostgreSQL (운영) / H2 (개발) / Redis (선착순 이벤트 카운터)
 - Gradle, JUnit 5, Testcontainers
 - Docker, Kubernetes, GitHub Actions
@@ -22,7 +22,17 @@
   선착순 이벤트 수량은 세 방식을 비교해 결정한다.
 - 데드락을 막기 위해 락 획득 순서를 `FlashSale → Product → Customer`로 고정한다.
 
+## 실행 요건
+
+**Java 17 이상**이면 빌드와 실행이 모두 된다. 컴파일 대상이 Java 17이므로 JDK 17 환경에서도
+그대로 동작한다. Gradle은 저장소의 Wrapper를 쓰므로 따로 설치하지 않아도 된다.
+
+Java 21에서 실행하면 `spring.threads.virtual.enabled=true`로 가상 스레드를 켤 수 있다.
+Java 17에서는 이 속성이 조용히 무시되고 플랫폼 스레드로 동작한다. 그 외 기능 차이는 없다.
+
 ## 실행
+
+컨테이너 이미지가 JDK 21 기반이라 아래 방법이 호스트 JDK와 무관하게 동일하게 동작한다.
 
 ```bash
 docker compose -f infra/compose.yaml up -d
