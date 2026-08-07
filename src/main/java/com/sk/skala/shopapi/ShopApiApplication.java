@@ -2,6 +2,7 @@ package com.sk.skala.shopapi;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 
 /**
  * skala-shop-api 애플리케이션 진입점.
@@ -20,6 +21,9 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * 하위 패키지로 내리면 그 바깥의 컴포넌트가 스캔되지 않는다.
  */
 @SpringBootApplication
+// @ConfigurationProperties가 붙은 클래스를 찾아 빈으로 등록한다.
+// 이게 없으면 SignUpProperties가 주입되지 않아 기동에 실패한다.
+@ConfigurationPropertiesScan
 public class ShopApiApplication {
 
     public static void main(String[] args) {
