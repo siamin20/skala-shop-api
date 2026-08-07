@@ -76,6 +76,41 @@ PR을 올릴 때마다 아래를 순서대로 수행한다. 하나라도 걸리�
 | 이미 다른 곳에서 보완됨 | 고치지 않고 PR에 근거를 답글로 남긴다 |
 | 취향 차이 | 고치지 않고 이유를 답글로 남긴다 |
 
+#### 등급별 처리 속도
+
+지적 등급에 따라 재리뷰를 기다릴지 결정한다. 사소한 지적에 매달리면 진도가 멈춘다.
+
+| 등급 | 처리 |
+| --- | --- |
+| Critical · Major | 고치고 **재리뷰를 기다린 뒤** 머지한다. 코드 동작에 영향이 있으므로 확인이 필요하다 |
+| Minor | **한 번만 고치고 재리뷰를 기다리지 않고 머지한다** |
+
+Minor를 기다리지 않는 이유는, 문구나 주석 수준의 지적이 여러 번 왕복하며 반나절을 쓰는 일이
+실제로 발생했기 때문이다(PR #3에서 같은 문장으로 리뷰가 세 번 돌았다).
+대신 놓친 것이 쌓이지 않도록 아래 일괄 점검으로 회수한다.
+
+#### Minor 일괄 재점검 (PR 3개마다)
+
+머지한 PR이 3개 쌓이면 그동안의 Minor 지적을 한 번에 다시 본다.
+
+```bash
+# 최근 머지된 PR들의 CodeRabbit 지적 중, 해결 확인 답글이 없는 것만 추린다
+for n in $(gh pr list --state merged --limit 3 --json number -q '.[].number'); do
+  echo "── PR #$n"
+  gh api repos/siamin20/skala-shop-api/pulls/$n/comments --paginate \
+    -q '[.[]|select(.user.login=="coderabbitai[bot]")] as $all
+        | [$all[]|select(.body|test("review_comment_addressed"))|.in_reply_to_id] as $ok
+        | $all[]|select(.in_reply_to_id==null)|select([.id]|inside($ok)|not)
+        | "  \(.path):\(.line // .original_line)"'
+done
+```
+
+나온 항목마다 판단한다.
+
+- 지금도 유효하고 고칠 가치가 있다 → 다음 PR에 함께 고친다
+- 이후 변경으로 이미 해결됐다 → 넘어간다
+- 의도적으로 다르게 간 것이다 → `docs/05-decisions.md`에 근거를 남긴다
+
 **명세와 충돌하는 지적을 받으면** CodeRabbit은 diff만 보므로 전체 맥락을 모른다는 점을 전제한다.
 
 1. 지적된 문제가 다른 계층(도메인 검증, 트랜잭션 경계, 유니크 제약 등)에서 이미 막히는지 확인한다.
