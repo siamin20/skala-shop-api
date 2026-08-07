@@ -77,6 +77,36 @@ class MoneyTest {
             assertThatThrownBy(() -> Money.of(15_000).times(-1))
                     .isInstanceOf(IllegalArgumentException.class);
         }
+
+        @Test
+        @DisplayName("곱셈 결과가 long 범위를 넘으면 양수로 되돌아오지 않고 거부한다")
+        void rejectMultiplicationOverflow() {
+            // 2^62 × 4 = 2^64 이며, 검사 없이 곱하면 0이 되어 생성자의 음수 검사를 통과한다.
+            // 즉 예외 없이 "0원"이라는 틀린 총액이 만들어진다.
+            Money huge = Money.of(1L << 62);
+
+            assertThatThrownBy(() -> huge.times(4))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("너무 큽니다");
+        }
+
+        @Test
+        @DisplayName("덧셈 결과가 long 범위를 넘으면 거부한다")
+        void rejectAdditionOverflow() {
+            Money max = Money.of(Long.MAX_VALUE);
+
+            assertThatThrownBy(() -> max.plus(Money.of(1)))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("너무 큽니다");
+        }
+
+        @Test
+        @DisplayName("범위 안의 큰 값은 정상 계산된다")
+        void allowLargeButValidAmounts() {
+            assertThat(Money.of(Long.MAX_VALUE).times(1).getAmount()).isEqualTo(Long.MAX_VALUE);
+            assertThat(Money.of(Long.MAX_VALUE / 2).plus(Money.of(1)).getAmount())
+                    .isEqualTo(Long.MAX_VALUE / 2 + 1);
+        }
     }
 
     @Nested

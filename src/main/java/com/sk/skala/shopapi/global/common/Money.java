@@ -65,9 +65,13 @@ public class Money implements Comparable<Money> {
         return amount;
     }
 
-    /** 두 금액을 더한 새 값을 반환한다. */
+    /**
+     * 두 금액을 더한 새 값을 반환한다.
+     *
+     * @throws IllegalArgumentException 결과가 {@code long} 범위를 넘는 경우
+     */
     public Money plus(Money other) {
-        return new Money(this.amount + other.amount);
+        return new Money(addExact(this.amount, other.amount));
     }
 
     /**
@@ -85,13 +89,37 @@ public class Money implements Comparable<Money> {
     /**
      * 수량을 곱한 새 값을 반환한다. 주문 총액(단가 × 수량)을 구할 때 쓴다.
      *
-     * @throws IllegalArgumentException 수량이 음수인 경우
+     * <p>단순 곱셈을 쓰면 안 된다. {@code long} 범위를 넘길 때 결과가 <b>양수로</b> 되돌아올 수 있어
+     * 생성자의 음수 검사를 그대로 통과한다. 그러면 아무 예외 없이 잘못된 총액이나
+     * 환급액이 계산되어 저장된다. 덧셈과 달리 곱셈은 이런 방식으로 조용히 틀릴 수 있다.
+     *
+     * @param quantity 곱할 수량. 0 이상이어야 한다
+     * @throws IllegalArgumentException 수량이 음수이거나 결과가 {@code long} 범위를 넘는 경우
      */
     public Money times(int quantity) {
         if (quantity < 0) {
             throw new IllegalArgumentException("수량은 음수일 수 없습니다: " + quantity);
         }
-        return new Money(this.amount * quantity);
+        try {
+            return new Money(Math.multiplyExact(this.amount, quantity));
+        } catch (ArithmeticException e) {
+            throw new IllegalArgumentException(
+                    "금액 계산 결과가 너무 큽니다: %d × %d".formatted(this.amount, quantity));
+        }
+    }
+
+    /**
+     * 넘침을 감지하는 덧셈.
+     *
+     * <p>{@code ArithmeticException}을 그대로 흘리면 전역 예외 처리기에서 500이 된다.
+     * 잘못된 입력이 원인이므로 400으로 나가도록 {@code IllegalArgumentException}으로 옮긴다.
+     */
+    private static long addExact(long a, long b) {
+        try {
+            return Math.addExact(a, b);
+        } catch (ArithmeticException e) {
+            throw new IllegalArgumentException("금액 계산 결과가 너무 큽니다: %d + %d".formatted(a, b));
+        }
     }
 
     /** 이 금액이 {@code other}보다 적으면 true. 잔액 부족 판단에 쓴다. */
