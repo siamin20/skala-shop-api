@@ -1,0 +1,28 @@
+# Java / Gradle
+build/
+.gradle/
+!gradle/wrapper/gradle-wrapper.jar
+*.class
+*.jar
+*.log
+
+# Node
+node_modules/
+dist/
+*.local
+
+# 환경변수
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+
+# 설계 문서는 로컬에만 두고 커밋하지 않는다
+docs/
