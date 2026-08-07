@@ -89,21 +89,40 @@ Minor를 기다리지 않는 이유는, 문구나 주석 수준의 지적이 여
 실제로 발생했기 때문이다(PR #3에서 같은 문장으로 리뷰가 세 번 돌았다).
 대신 놓친 것이 쌓이지 않도록 아래 일괄 점검으로 회수한다.
 
+#### 리뷰 한도 아끼기
+
+CodeRabbit 무료 리뷰에는 횟수 제한이 있다. **push할 때마다 리뷰가 한 번씩 소모된다.**
+실제로 PR 5개를 진행하면서 한도에 걸려 리뷰가 시작조차 못 한 적이 있다(PR #5).
+
+- 수정 커밋을 하나씩 push하지 않는다. **모아서 한 번에 push한다.**
+- 준비가 덜 된 PR은 Draft로 두고, 완성된 뒤 Ready로 바꾼다.
+- 한도에 걸리면 기다렸다가 PR에 `@coderabbitai review` 코멘트로 다시 요청한다.
+- 리뷰를 기다리는 동안에는 다음 작업의 **리뷰 결과와 무관한 부분**을 미리 진행한다.
+
 #### Minor 일괄 재점검 (PR 3개마다)
 
 머지한 PR이 3개 쌓이면 그동안의 Minor 지적을 한 번에 다시 본다.
 
 ```bash
-# 최근 머지된 PR들의 CodeRabbit 지적 중, 해결 확인 답글이 없는 것만 추린다
+# 최근 머지된 PR들의 Minor 지적 중, 해결 확인 답글이 없는 것만 추린다
 for n in $(gh pr list --state merged --limit 3 --json number -q '.[].number'); do
   echo "── PR #$n"
-  gh api repos/siamin20/skala-shop-api/pulls/$n/comments --paginate \
-    -q '[.[]|select(.user.login=="coderabbitai[bot]")] as $all
-        | [$all[]|select(.body|test("review_comment_addressed"))|.in_reply_to_id] as $ok
-        | $all[]|select(.in_reply_to_id==null)|select([.id]|inside($ok)|not)
+  gh api repos/siamin20/skala-shop-api/pulls/$n/comments --paginate --slurp \
+    | jq -r 'add
+        | [.[] | select(.body | test("review_comment_addressed")) | .in_reply_to_id] as $resolved
+        | .[]
+        | select(.in_reply_to_id == null)
+        | select(.body | test("🟡 Minor"))
+        | select([.id] | inside($resolved) | not)
         | "  \(.path):\(.line // .original_line)"'
 done
 ```
+
+`--paginate`를 `-q`와 함께 쓰면 안 된다. jq 필터가 페이지마다 따로 실행돼
+지적과 해결 답글이 다른 페이지에 있으면 짝을 찾지 못한다.
+`--slurp`로 전체 페이지를 배열로 받은 뒤 `add`로 합쳐 한 번에 거른다.
+
+`🟡 Minor` 조건이 없으면 이미 확인을 마친 Critical·Major까지 다시 올라온다.
 
 나온 항목마다 판단한다.
 
