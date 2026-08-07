@@ -37,12 +37,18 @@ java {
 
 tasks.withType(JavaCompile).configureEach {
     // release는 sourceCompatibility보다 강하다. 바이트코드 버전을 낮출 뿐 아니라
-    // Java 18~21에서 추가된 API를 컴파일 시점에 보이지 않게 만든다.
-    // 그래서 JDK 21로 빌드해도 17에서 못 도는 코드를 실수로 넣을 수가 없다.
+    // JDK 18~21에서 추가된 표준 API를 컴파일 시점에 보이지 않게 만든다.
+    // 그래서 JDK 21로 빌드해도 그 API를 직접 참조하는 코드를 실수로 넣을 수 없다.
     //
-    // 가상 스레드는 이 제약과 무관하게 쓸 수 있다. spring.threads.virtual.enabled는
-    // API 호출이 아니라 런타임 속성이라, JDK 21에서 실행하면 켜지고 17에서는 조용히 무시된다.
+    // 다만 보장 범위는 여기까지다. 외부 라이브러리가 내부적으로 Java 21을 요구하거나
+    // 리플렉션으로 새 API를 부르는 경우는 막지 못하므로, 실제 JDK 17 실행 검증은 별도로 한다.
+    //
+    // 가상 스레드는 이 제약과 무관하다. spring.threads.virtual.enabled는
+    // API 호출이 아니라 런타임 속성이라, JDK 21에서 실행하면 켜지고 17에서는 무시된다.
     options.release = 17
+
+    // 소스 인코딩을 고정한다. 지정하지 않으면 빌드 환경의 기본 인코딩을 따라가,
+    // 한글 주석과 문자열 리터럴이 개발자 OS에 따라 깨질 수 있다.
     options.encoding = 'UTF-8'
 }
 
