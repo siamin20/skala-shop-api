@@ -115,7 +115,7 @@ public class CustomerService {
         Customer customer = findCustomerOrThrow(customerId);
 
         // 영속 엔티티이므로 값만 바꾸면 트랜잭션 종료 시 변경 감지로 UPDATE된다. save 불필요.
-        customer.refundPoint(Money.of(request.amount()));
+        customer.chargePoint(Money.of(request.amount()));
 
         return CustomerResponse.from(customer);
     }
@@ -137,6 +137,12 @@ public class CustomerService {
         Customer customer = findCustomerOrThrow(customerId);
 
         orderItemRepository.deleteAll(orderItemRepository.findByCustomer_CustomerId(customerId));
+
+        // 자식 삭제를 DB에 먼저 반영한다. flush 없이 두면 두 삭제가 같은 시점에 나가고,
+        // 실행 순서는 Hibernate의 내부 규칙에 맡겨진다. 지금은 우연히 맞지만
+        // 매핑이 하나만 바뀌어도 부모가 먼저 나가 외래 키 제약에 걸릴 수 있다.
+        orderItemRepository.flush();
+
         customerRepository.delete(customer);
     }
 
