@@ -1,21 +1,24 @@
 /*
  * skala-shop-api 빌드 스크립트
  *
- * 의존성은 Phase 단위로 추가한다. 지금은 P0~P1(도메인·API)에 필요한 것만 있고,
- * Security는 P2, Testcontainers는 P3, Redis는 P4에서 추가한다.
- * 한 번에 다 넣지 않는 이유는, 각 의존성이 어느 기능 때문에 들어왔는지
- * 커밋 이력만 봐도 알 수 있게 하기 위해서다.
+ * 구성 원칙: 과제 명세(교재 538~539p)의 플러그인·의존성을 모두 포함하고,
+ * 그 위에 이 프로젝트에서 추가로 결정한 항목을 얹는다.
+ * 아래 dependencies 블록은 [명세] / [추가] 두 구획으로 나누어 표시했다.
+ *
+ * 명세와 다르게 간 항목은 로컬 docs/05-decisions.md에 근거를 남기고,
+ * 해당 줄에 결정 번호(D1~D11)를 주석으로 단다.
  */
 
 plugins {
     id 'java'
 
     // 실행 가능한 jar 패키징(bootJar)과 bootRun 태스크를 제공한다.
-    id 'org.springframework.boot' version '3.3.5'
+    // 버전은 명세에 명시된 3.3.0을 그대로 쓴다.
+    id 'org.springframework.boot' version '3.3.0'
 
     // Spring Boot BOM을 적용해 의존성 버전을 자동으로 맞춘다.
     // 덕분에 아래 dependencies에서 대부분 버전을 적지 않아도 된다.
-    id 'io.spring.dependency-management' version '1.1.7'
+    id 'io.spring.dependency-management' version '1.1.5'
 }
 
 group = 'com.sk.skala'
@@ -23,8 +26,11 @@ version = '0.0.1-SNAPSHOT'
 description = 'SKALA SHOP REST API'
 
 java {
-    // toolchain을 쓰면 개발자마다 설치된 JDK가 달라도 Gradle이 지정한 버전을 찾아 쓴다.
-    // sourceCompatibility만 지정하는 방식보다 재현성이 높다.
+    // D11: 명세는 sourceCompatibility = '17'이지만 Java 21을 쓴다.
+    // 가상 스레드로 처리량을 비교하는 실험(P4)에 필요하기 때문이다.
+    //
+    // sourceCompatibility 대신 toolchain을 쓰는 이유는, 개발자마다 설치된 JDK가 달라도
+    // Gradle이 지정한 버전을 직접 찾아 쓰기 때문에 빌드 재현성이 높기 때문이다.
     toolchain {
         languageVersion = JavaLanguageVersion.of(21)
     }
@@ -42,38 +48,58 @@ repositories {
 }
 
 dependencies {
-    // --- 웹 계층 ---
-    // REST 컨트롤러, 내장 Tomcat, Jackson 직렬화를 포함한다.
-    implementation 'org.springframework.boot:spring-boot-starter-web'
 
-    // @Valid / @NotBlank 같은 Bean Validation.
-    // 요청 DTO에서 입력값을 검증하기 위해 필요하다. (D3: 엔티티를 요청 본문으로 쓰지 않는다)
-    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    // ────────────────────────── [명세] 교재 539p 의존성 ──────────────────────────
 
-    // --- 영속성 계층 ---
-    // Spring Data JPA와 Hibernate.
+    // JPA 기반 DB 연동. Spring Data JPA와 Hibernate를 포함한다.
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 
-    // 개발과 단위 테스트용 인메모리 DB.
-    // 동시성 통합 테스트는 락 동작이 달라서 H2를 쓰지 않는다. (D10)
-    runtimeOnly 'com.h2database:h2'
+    // AOP. API 호출 로깅과 traceId 주입에 쓴다. (P5)
+    implementation 'org.springframework.boot:spring-boot-starter-aop'
 
-    // 운영 DB. 로컬에서는 infra/compose.yaml로 띄운다.
-    runtimeOnly 'org.postgresql:postgresql'
+    // Actuator. 헬스체크와 메트릭 엔드포인트를 제공하며
+    // 쿠버네티스 probe와 Prometheus 수집에 연결한다. (P5~P6)
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
 
-    // --- 문서화 ---
-    // 실행 후 /swagger-ui.html 에서 API를 직접 호출해볼 수 있다.
-    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0'
+    // REST API. 내장 Tomcat과 Jackson 직렬화를 포함한다.
+    implementation 'org.springframework.boot:spring-boot-starter-web'
 
-    // --- 보일러플레이트 축소 ---
-    // Getter, RequiredArgsConstructor 등에만 쓴다.
-    // 도메인 객체에는 @Setter와 @Data를 쓰지 않는다. (D2: Setter를 열지 않는다)
+    // @ConfigurationProperties 클래스의 메타데이터를 생성한다.
+    // 덕분에 IDE가 application.yml에서 커스텀 설정을 자동완성해준다.
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+
+    // Lombok. compileOnly + annotationProcessor로 선언해 빌드 산출물 jar에는 포함되지 않는다.
+    // D2: 도메인 객체에는 @Setter와 @Data를 쓰지 않는다. Getter와 생성자 애노테이션만 쓴다.
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
 
-    // --- 테스트 ---
-    // JUnit 5, AssertJ, Mockito, MockMvc를 포함한다.
+    // 테스트. JUnit 5, AssertJ, Mockito, MockMvc를 포함한다.
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+
+    // 개발과 단위 테스트용 인메모리 DB.
+    // D10: 동시성 통합 테스트는 락 동작이 달라서 H2를 쓰지 않고 실제 PostgreSQL을 쓴다.
+    runtimeOnly 'com.h2database:h2'
+
+    // JWT. api는 컴파일 시점에 쓰는 인터페이스, impl과 jackson은 런타임 구현체다.
+    // 셋을 나눠 선언하면 애플리케이션 코드가 구현체에 직접 의존하지 않는다.
+    // D5: 토큰 생성·검증은 jjwt로 하고, 인가 규칙은 Spring Security 필터 체인에서 선언한다. (P2)
+    implementation 'io.jsonwebtoken:jjwt-api:0.11.5'
+    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.11.5'
+    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.11.5'
+
+    // ────────────────────────── [추가] 이 프로젝트의 결정 ──────────────────────────
+
+    // Bean Validation. @Valid와 @NotBlank로 요청 DTO를 검증한다.
+    // D3: 엔티티를 요청 본문으로 쓰지 않고 Request DTO를 따로 두기 때문에 필요하다.
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+
+    // Swagger UI. 프론트엔드 없이 전체 API 흐름을 호출해 검증하기 위해 넣는다.
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.5.0'
+
+    // 운영 DB 드라이버. 로컬에서는 infra/compose.yaml로 띄운다. (D10)
+    runtimeOnly 'org.postgresql:postgresql'
+
+    // Gradle이 JUnit 5 테스트를 실행할 때 필요한 런처.
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
