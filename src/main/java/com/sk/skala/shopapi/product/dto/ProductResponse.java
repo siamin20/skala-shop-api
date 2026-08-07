@@ -19,6 +19,15 @@ import com.sk.skala.shopapi.product.domain.Product;
  */
 public record ProductResponse(Long id, String name, long price) {
 
+    /**
+     * 엔티티를 응답으로 옮긴다.
+     *
+     * <p>변환을 DTO 쪽 정적 메서드에 두는 이유는, 서비스마다 같은 매핑 코드를 반복하지 않기 위해서다.
+     * 반대 방향(엔티티가 DTO를 아는 것)으로 두면 도메인이 API 표현에 묶인다.
+     *
+     * <p>{@code Money}를 그대로 담지 않고 {@code long}으로 펼치는 것도 여기서 처리한다.
+     * 값 객체를 직렬화하면 {@code {"amount": 15000}}처럼 한 겹 더 감싼 JSON이 나간다.
+     */
     public static ProductResponse from(Product product) {
         return new ProductResponse(
                 product.getId(),

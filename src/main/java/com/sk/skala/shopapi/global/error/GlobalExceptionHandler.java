@@ -4,6 +4,7 @@ import java.net.URI;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -107,6 +108,27 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                 ErrorCode.INVALID_PARAMETER, ErrorCode.INVALID_PARAMETER.getMessage());
         problem.setProperty("errors", errors);
         return problem;
+    }
+
+    /**
+     * DB 제약 위반을 처리한다.
+     *
+     * <p>서비스가 저장 전에 중복을 검사해도 <b>검사와 저장 사이에 다른 요청이 끼어들면</b>
+     * 유니크 제약에서 터진다. 애플리케이션 검사는 좋은 메시지를 위한 것이고,
+     * 실제 최종 방어선은 DB다. 그 방어선이 작동했을 때 500을 내보내면
+     * 클라이언트 잘못이 서버 장애로 둔갑하고 5xx 알람이 잘못 울린다.
+     *
+     * <p>이 애플리케이션에서 발생 가능한 제약 위반은 사실상 유니크 위반뿐이다.
+     * 외래 키는 삭제 순서를 코드에서 지키고 있고({@code CustomerService.deleteCustomer}),
+     * NOT NULL은 도메인 생성자가 먼저 막는다. 그래서 {@link ErrorCode#DATA_DUPLICATED}로 옮긴다.
+     *
+     * <p>원인 메시지는 응답에 담지 않는다. 제약 이름이나 테이블 구조가 노출된다.
+     * 대신 로그에는 스택을 남겨 어떤 제약이 걸렸는지 추적할 수 있게 한다.
+     */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ProblemDetail handleDataIntegrityViolation(DataIntegrityViolationException e) {
+        log.warn("DB 제약 위반", e);
+        return toProblemDetail(ErrorCode.DATA_DUPLICATED, ErrorCode.DATA_DUPLICATED.getMessage());
     }
 
     /**

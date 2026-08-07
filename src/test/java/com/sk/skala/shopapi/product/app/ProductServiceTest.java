@@ -206,6 +206,22 @@ class ProductServiceTest {
         }
 
         @Test
+        @DisplayName("공백만 다른 이름으로 바꾸려 해도 중복으로 잡는다")
+        void rejectRenameToExistingNameAfterTrim() {
+            Product mouse = 저장된상품("무선마우스", 15_000);
+            저장된상품("USB허브", 39_000);
+
+            // 저장은 Product.normalizeName을 거치는데 중복 검사가 다른 규칙을 쓰면
+            // "  USB허브  "가 검사를 통과해 저장 단계에서 유니크 제약으로 터진다.
+            // 두 경로가 같은 정규화를 쓰는지 이 테스트가 고정한다.
+            assertThatThrownBy(() -> productService.updateProduct(
+                    mouse.getId(), new ProductUpdateRequest("  USB허브  ", 20_000L)))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getErrorCode())
+                    .isEqualTo(ErrorCode.DATA_DUPLICATED);
+        }
+
+        @Test
         @DisplayName("없는 상품을 수정하면 DATA_NOT_FOUND")
         void updateNotFound() {
             assertThatThrownBy(() -> productService.updateProduct(

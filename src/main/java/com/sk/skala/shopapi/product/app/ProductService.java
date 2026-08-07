@@ -99,10 +99,14 @@ public class ProductService {
     public ProductResponse updateProduct(Long id, ProductUpdateRequest request) {
         Product product = findProductOrThrow(id);
 
+        // 저장될 값과 같은 규칙으로 비교해야 한다. 서비스가 trim을 직접 부르면
+        // 정규화 규칙이 두 곳에 흩어져 나중에 어긋난다.
+        String normalizedName = Product.normalizeName(request.name());
+
         // 자기 자신은 중복에서 제외한다. 이름을 그대로 두고 가격만 바꾸는 경우를 막지 않기 위해서다.
-        if (productRepository.existsByNameAndIdNot(request.name().trim(), id)) {
+        if (productRepository.existsByNameAndIdNot(normalizedName, id)) {
             throw new BusinessException(
-                    ErrorCode.DATA_DUPLICATED, "이미 존재하는 상품명입니다: " + request.name().trim());
+                    ErrorCode.DATA_DUPLICATED, "이미 존재하는 상품명입니다: " + normalizedName);
         }
 
         product.changeName(request.name());

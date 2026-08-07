@@ -106,11 +106,16 @@ public class Product {
     /**
      * 상품명을 검증하고 앞뒤 공백을 제거한다.
      *
+     * <p>{@code public static}인 이유는 <b>중복 검사도 같은 규칙으로 비교해야</b> 하기 때문이다.
+     * 서비스가 {@code name.trim()}을 직접 부르면 정규화 규칙이 두 곳에 흩어진다.
+     * 나중에 여기서 규칙이 하나라도 바뀌면(예: 연속 공백 축약) 검사와 저장이 어긋나
+     * 중복이 조용히 통과한다.
+     *
      * <p>공백을 다듬지 않으면 {@code "무선마우스"}와 {@code "무선마우스 "}가 서로 다른 값이 되어
      * {@code product_name}의 유니크 제약을 그대로 통과한다. 목록에는 같아 보이는 상품이 두 줄로 뜨고,
      * 중복 검사도 뚫린다. 저장 직전 한 곳에서 다듬어 생성과 변경 양쪽에 같은 규칙을 적용한다.
      */
-    private String normalizeName(String name) {
+    public static String normalizeName(String name) {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("상품명은 비어 있을 수 없습니다");
         }
