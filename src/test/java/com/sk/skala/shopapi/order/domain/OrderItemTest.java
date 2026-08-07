@@ -53,12 +53,13 @@ class OrderItemTest {
     }
 
     @Test
-    @DisplayName("취소하면 수량이 줄어든다")
-    void decreaseReducesQuantity() {
+    @DisplayName("취소하면 수량이 줄고 환급액을 돌려준다")
+    void cancelReducesQuantityAndReturnsRefund() {
         OrderItem item = new OrderItem(고객, 무선마우스, 2);
 
-        item.decrease(1);
+        Money refund = item.cancel(1);
 
+        assertThat(refund).isEqualTo(Money.of(15_000));
         assertThat(item.getQuantity()).isEqualTo(1);
         assertThat(item.isEmpty()).isFalse();
     }
@@ -68,8 +69,9 @@ class OrderItemTest {
     void becomeEmptyWhenFullyCancelled() {
         OrderItem item = new OrderItem(고객, 무선마우스, 2);
 
-        item.decrease(2);
+        Money refund = item.cancel(2);
 
+        assertThat(refund).isEqualTo(Money.of(30_000));
         assertThat(item.getQuantity()).isZero();
         assertThat(item.isEmpty()).isTrue();
     }
@@ -79,12 +81,25 @@ class OrderItemTest {
     void rejectCancellationOverQuantity() {
         OrderItem item = new OrderItem(고객, 무선마우스, 2);
 
-        assertThatThrownBy(() -> item.decrease(3))
+        assertThatThrownBy(() -> item.cancel(3))
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(ErrorCode.INSUFFICIENT_QUANTITY);
 
         assertThat(item.getQuantity()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("수량이 int 범위를 넘도록 누적하면 음수로 뒤집히지 않고 거부한다")
+    void rejectQuantityOverflow() {
+        OrderItem item = new OrderItem(고객, 무선마우스, Integer.MAX_VALUE);
+
+        assertThatThrownBy(() -> item.increase(1))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("너무 큽니다");
+
+        // 실패한 뒤에도 수량이 음수로 뒤집히지 않아야 한다
+        assertThat(item.getQuantity()).isEqualTo(Integer.MAX_VALUE);
     }
 
     @Test
@@ -96,8 +111,9 @@ class OrderItemTest {
         무선마우스.changePrice(Money.of(30_000));
 
         assertThat(item.getUnitPrice()).isEqualTo(Money.of(15_000));
-        assertThat(item.refundAmountOf(1)).isEqualTo(Money.of(15_000));
         assertThat(item.totalPrice()).isEqualTo(Money.of(30_000));
+        // 환급도 인상된 30,000원이 아니라 주문 당시 단가 15,000원을 따른다
+        assertThat(item.cancel(1)).isEqualTo(Money.of(15_000));
     }
 
     @Test

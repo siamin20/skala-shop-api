@@ -106,27 +106,44 @@ public class OrderItem {
      */
     public void increase(int quantity) {
         validateQuantity(quantity);
-        this.quantity += quantity;
+        try {
+            // 단순 덧셈이면 int 범위를 넘을 때 음수로 뒤집혀 "수량은 항상 1 이상"이라는 불변식이 깨진다.
+            // addExact는 넘칠 때 조용히 뒤집지 않고 예외를 던진다.
+            this.quantity = Math.addExact(this.quantity, quantity);
+        } catch (ArithmeticException e) {
+            throw new IllegalArgumentException(
+                    "주문 수량이 너무 큽니다: %d + %d".formatted(this.quantity, quantity));
+        }
     }
 
     /**
-     * 수량을 줄인다. 주문 취소에 쓴다.
+     * 수량을 줄이고 환급할 금액을 반환한다. 주문 취소에 쓴다.
+     *
+     * <p>검증·차감·환급액 계산을 한 메서드로 묶은 이유가 있다. 이것을 나눠 두면
+     * 호출하는 쪽이 순서를 지켜야 하는 함정이 생긴다. 차감을 먼저 하면 남은 수량이 이미 줄어
+     * 환급액을 잘못 계산하고, 환급액을 먼저 구하면 검증 전에 금액이 정해진다.
+     * 한 번에 처리하면 어떤 순서로 부르든 틀릴 수가 없다.
      *
      * <p>보유한 수량보다 많이 취소할 수 없다. 막지 않으면 수량이 음수가 되고,
      * 산 적 없는 만큼 포인트를 환급받을 수 있게 된다.
      *
+     * <p>환급액은 현재 상품 가격이 아니라 주문 시점 단가로 계산한다.
+     *
      * @param quantity 취소할 수량. 1 이상이어야 한다
+     * @return 돌려줄 금액
      * @throws IllegalArgumentException 취소 수량이 1 미만인 경우
      * @throws BusinessException        보유 수량보다 많이 취소하면 {@link ErrorCode#INSUFFICIENT_QUANTITY}
      */
-    public void decrease(int quantity) {
+    public Money cancel(int quantity) {
         validateQuantity(quantity);
         if (this.quantity < quantity) {
             throw new BusinessException(
                     ErrorCode.INSUFFICIENT_QUANTITY,
                     "취소 요청 %d개, 주문 수량 %d개".formatted(quantity, this.quantity));
         }
+        Money refund = unitPrice.times(quantity);
         this.quantity -= quantity;
+        return refund;
     }
 
     /**
@@ -142,11 +159,6 @@ public class OrderItem {
 
     /** 남은 수량 기준 총액. 단가 스냅샷을 쓰므로 상품 가격이 바뀌어도 값이 변하지 않는다. */
     public Money totalPrice() {
-        return unitPrice.times(quantity);
-    }
-
-    /** 취소할 수량만큼의 환급 금액. */
-    public Money refundAmountOf(int quantity) {
         return unitPrice.times(quantity);
     }
 
