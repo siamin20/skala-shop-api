@@ -177,6 +177,70 @@ class AuthControllerTest {
     }
 
     @Test
+    @DisplayName("로그아웃하면 이미 발급된 리프레시 토큰도 무효가 된다")
+    void logoutInvalidatesIssuedRefreshTokens() throws Exception {
+        // 공격자가 리프레시 토큰을 확보한 상황을 흉내 낸다.
+        // 쿠키를 손에 넣었으므로 브라우저에서 쿠키가 지워져도 이 값은 그대로 남는다.
+        MvcResult loginResult = mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(credentials("skala01", PASSWORD)))
+                .andReturn();
+
+        Cookie stolen = loginResult.getResponse().getCookie("bff-refresh");
+        String accessToken = objectMapper
+                .readTree(loginResult.getResponse().getContentAsString())
+                .get("accessToken").asText();
+
+        // 훔친 토큰은 로그아웃 전에는 잘 동작한다
+        mockMvc.perform(post("/api/auth/refresh").cookie(stolen))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/auth/logout").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isNoContent());
+
+        // 쿠키만 만료시켰다면 훔친 토큰은 그대로 통과한다.
+        // 토큰 버전을 올려야 여기서 막힌다. 막히지 않으면 로그아웃해도
+        // 공격자가 최대 14일 동안 액세스 토큰을 계속 재발급받는다. (D25)
+        mockMvc.perform(post("/api/auth/refresh").cookie(stolen))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("로그아웃 후 다시 로그인하면 새 리프레시 토큰은 동작한다")
+    void loginAfterLogoutWorks() throws Exception {
+        String token = login("skala01");
+        mockMvc.perform(post("/api/auth/logout").header("Authorization", "Bearer " + token));
+
+        // 무효화가 과하게 걸려 재로그인까지 막으면 아무도 다시 못 들어온다.
+        Cookie fresh = mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(credentials("skala01", PASSWORD)))
+                .andReturn().getResponse().getCookie("bff-refresh");
+
+        mockMvc.perform(post("/api/auth/refresh").cookie(fresh))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("한 기기에서 로그아웃하면 다른 기기의 리프레시 토큰도 끊긴다")
+    void logoutInvalidatesAllDevices() throws Exception {
+        Cookie phone = mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(credentials("skala01", PASSWORD)))
+                .andReturn().getResponse().getCookie("bff-refresh");
+
+        String laptopToken = login("skala01");
+
+        mockMvc.perform(post("/api/auth/logout")
+                .header("Authorization", "Bearer " + laptopToken));
+
+        // 의도한 동작이다. 기기별로 끊으려면 세션 식별자가 따로 필요한데
+        // 그건 무상태 JWT의 범위를 벗어난다. 이 테스트는 그 한계를 고정해둔다.
+        mockMvc.perform(post("/api/auth/refresh").cookie(phone))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     @DisplayName("관리자로 로그인하면 역할이 ADMIN이다")
     void adminLogin() throws Exception {
         String token = login("admin01");
@@ -216,7 +280,20 @@ class AuthControllerTest {
         parts[2] = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
         String tampered = String.join(".", parts);
 
-        mockMvc.perform(get("/api/auth/me").header("Authorization", "Bearer " + tampered))
+
+        // 페이로드(2번째 조각)의 첫 글자를 바꾼다. 서명은 헤더+페이로드로 계산되므로
+        // 페이로드가 달라지면 서명 검증이 실패한다.
+        //
+        // 처음에는 토큰 맨 끝 글자를 바꿨다. 그런데 HS256 서명은 32바이트이고
+        // base64url로 43글자인데 43×6 = 258비트다. 32바이트는 256비트이므로
+        // 마지막 글자의 하위 2비트는 디코딩할 때 버려진다.
+        // 그 비트만 건드리면 디코딩된 서명 바이트가 그대로라 검증을 통과한다.
+        // 즉 이 테스트는 아무것도 검증하지 못하고 있었다.
+        char first = parts[1].charAt(0);
+        parts[1] = (first == 'e' ? 'f' : 'e') + parts[1].substring(1);
+
+        mockMvc.perform(get("/api/auth/me")
+                        .header("Authorization", "Bearer " + String.join(".", parts)))
                 .andExpect(status().isUnauthorized());
     }
 }

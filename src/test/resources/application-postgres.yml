@@ -43,6 +43,12 @@ shop:
     id:
     password:
 
+  jwt:
+    # 테스트용 시크릿. 운영 프로파일에는 이 블록이 없으므로
+    # JWT_SECRET을 주지 않으면 기동에 실패한다. (D26)
+    secret: test-only-jwt-secret-key-at-least-32-bytes-long
+    cookie-secure: false
+
   payment:
     # 테스트용 암호화 키. 운영에는 이 블록이 없으므로 키를 주지 않으면 기동에 실패한다. (D26, D32)
     encryption-key: test-only-card-encryption-key-32-bytes-long

@@ -65,9 +65,24 @@ public class AuthService {
     }
 
     /** 리프레시 토큰용 새 액세스 토큰을 만든다. */
-    public LoginResponse reissue(String customerId) {
+    /**
+     * 리프레시 토큰으로 액세스 토큰을 다시 발급한다.
+     *
+     * <p>토큰에 담긴 버전이 지금 값과 같아야 한다. 로그아웃하면 값이 올라가므로
+     * 그 이전에 발급된 토큰은 여기서 거부된다. (D25)
+     *
+     * @param tokenVersion 리프레시 토큰에 담겨 있던 발급 시점의 버전
+     */
+    public LoginResponse reissue(String customerId, long tokenVersion) {
         Customer customer = customerRepository.findById(customerId)
                 .orElseThrow(AuthService::notAuthenticated);
+
+        if (!customer.hasTokenVersion(tokenVersion)) {
+            // 로그아웃 이후에 쓰인 토큰이다.
+            // 왜 거부되는지 구체적으로 알려주지 않는다. 토큰을 훔친 쪽에
+            // "버전이 올라갔다"는 단서를 줄 이유가 없다.
+            throw notAuthenticated();
+        }
 
         return new LoginResponse(
                 customer.getCustomerId(),
@@ -77,6 +92,19 @@ public class AuthService {
     }
 
     /** 리프레시 토큰을 만든다. 컨트롤러가 쿠키로 내보낸다. */
+    /**
+     * 로그아웃 처리. 토큰 버전을 올려 발급된 리프레시 토큰을 모두 무효화한다.
+     *
+     * <p>{@code readOnly = true}인 클래스에서 이 메서드만 쓰기 트랜잭션이다.
+     * 붙이지 않으면 변경이 반영되지 않아 <b>로그아웃이 조용히 아무 일도 하지 않는다.</b>
+     */
+    @Transactional
+    public void logout(String customerId) {
+        customerRepository.findById(customerId)
+                .orElseThrow(AuthService::notAuthenticated)
+                .invalidateTokens();
+    }
+
     public String createRefreshToken(String customerId) {
         Customer customer = customerRepository.findById(customerId)
                 .orElseThrow(AuthService::notAuthenticated);
