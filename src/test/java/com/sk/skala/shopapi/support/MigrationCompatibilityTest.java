@@ -47,15 +47,25 @@ class MigrationCompatibilityTest extends PostgresIntegrationTest {
     class Migrations {
 
         @Test
-        @DisplayName("V1~V6이 모두 성공으로 기록된다")
+        @DisplayName("클래스패스의 마이그레이션이 모두 적용되고 전부 성공이다")
         void allMigrationsSucceeded() {
             List<Map<String, Object>> history = jdbc.queryForList(
                     "SELECT version, description, success FROM flyway_schema_history "
                             + "WHERE version IS NOT NULL ORDER BY installed_rank");
 
-            assertThat(history)
-                    .extracting(row -> row.get("version"))
-                    .containsExactly("1", "2", "3", "4", "5", "6");
+            // 버전 번호를 못 박지 않는다. 스택 브랜치마다 갖고 있는 마이그레이션이 달라
+            // 목록을 고정하면 병합할 때마다 이 테스트를 고쳐야 한다.
+            // 확인해야 하는 것은 "클래스패스에 있는 것이 전부 적용됐는가"다.
+            long onClasspath;
+            try (var stream = java.nio.file.Files.list(
+                    java.nio.file.Path.of("src/main/resources/db/migration"))) {
+                onClasspath = stream.filter(f -> f.toString().endsWith(".sql")).count();
+            } catch (java.io.IOException e) {
+                throw new IllegalStateException("마이그레이션 디렉터리를 읽을 수 없다", e);
+            }
+
+            assertThat(history).hasSize((int) onClasspath);
+            assertThat(history).extracting(row -> row.get("version")).doesNotHaveDuplicates();
 
             // 하나라도 실패했다면 Flyway가 기동을 막았겠지만, 명시적으로 확인해둔다.
             assertThat(history).allSatisfy(row ->
@@ -98,14 +108,29 @@ class MigrationCompatibilityTest extends PostgresIntegrationTest {
     class SeedData {
 
         @Test
-        @DisplayName("V2가 넣은 상품 3건이 한글 그대로 들어간다")
+        @DisplayName("한글 상품명이 그대로 들어간다")
         void koreanProductNamesSurvive() {
             List<String> names = jdbc.queryForList(
                     "SELECT product_name FROM product ORDER BY id", String.class);
 
             // 인코딩이 어긋나면 예외 없이 '???'나 깨진 글자로 저장된다.
             // 조용히 잘못되는 종류라 눈으로 확인할 기회가 없다.
-            assertThat(names).containsExactly("무선마우스", "블루투스키보드", "USB허브");
+            assertThat(names)
+                    .startsWith("무선마우스", "블루투스키보드", "USB허브")
+                    .contains("세라마이드 수분 크림 50ml", "한정판 골드 앰플 세트");
+        }
+
+        @Test
+        @DisplayName("V8이 넣은 선착순 이벤트 중 진행 중인 것이 있다")
+        void openFlashSaleExists() {
+            // 고정 날짜를 쓰면 배포 시점에 따라 이미 끝난 이벤트가 된다.
+            // CURRENT_TIMESTAMP 기준 상대 시각으로 잡았는지 확인한다. (D29)
+            Integer open = jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM flash_sale "
+                            + "WHERE starts_at <= CURRENT_TIMESTAMP AND ends_at > CURRENT_TIMESTAMP",
+                    Integer.class);
+
+            assertThat(open).isEqualTo(3);
         }
 
         @Test

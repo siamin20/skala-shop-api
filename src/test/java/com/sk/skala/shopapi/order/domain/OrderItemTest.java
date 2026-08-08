@@ -57,7 +57,7 @@ class OrderItemTest {
     void cancelReducesQuantityAndReturnsRefund() {
         OrderItem item = new OrderItem(고객, 무선마우스, 2);
 
-        Money refund = item.cancel(1);
+        Money refund = item.cancel(1).total();
 
         assertThat(refund).isEqualTo(Money.of(15_000));
         assertThat(item.getQuantity()).isEqualTo(1);
@@ -69,7 +69,7 @@ class OrderItemTest {
     void becomeEmptyWhenFullyCancelled() {
         OrderItem item = new OrderItem(고객, 무선마우스, 2);
 
-        Money refund = item.cancel(2);
+        Money refund = item.cancel(2).total();
 
         assertThat(refund).isEqualTo(Money.of(30_000));
         assertThat(item.getQuantity()).isZero();
@@ -112,7 +112,7 @@ class OrderItemTest {
 
         assertThat(item.totalPrice()).isEqualTo(Money.of(30_000));
         // 환급도 인상된 30,000원이 아니라 결제한 15,000원을 따른다
-        assertThat(item.cancel(1)).isEqualTo(Money.of(15_000));
+        assertThat(item.cancel(1).total()).isEqualTo(Money.of(15_000));
     }
 
     @Test
@@ -129,7 +129,7 @@ class OrderItemTest {
         assertThat(item.totalPrice()).isEqualTo(Money.of(60_000));
 
         // 단가 스냅샷 방식이었다면 15,000 × 3 = 45,000만 돌아가 고객이 15,000원을 잃는다.
-        assertThat(item.cancel(3)).isEqualTo(Money.of(60_000));
+        assertThat(item.cancel(3).total()).isEqualTo(Money.of(60_000));
     }
 
     @Test
@@ -142,7 +142,10 @@ class OrderItemTest {
         상품.changePrice(Money.of(1L));
         item.increase(1, Money.of(1L));   // 누적 30,001원 / 4개
 
-        Money 합계 = item.cancel(1).plus(item.cancel(1)).plus(item.cancel(1)).plus(item.cancel(1));
+        Money 합계 = item.cancel(1).total()
+                .plus(item.cancel(1).total())
+                .plus(item.cancel(1).total())
+                .plus(item.cancel(1).total());
 
         // 비례 계산에서 내림된 잔돈이 마지막 전량 취소에서 정산된다
         assertThat(합계).isEqualTo(Money.of(30_001));

@@ -54,11 +54,18 @@ spring:
         default_batch_fetch_size: 100
 
 # 커스텀 설정. SignUpProperties가 이 값을 받는다.
-# 회원가입 시 지급할 초기 포인트로, 교재 시나리오(530p)의 잔액에서 역산한 값이다.
-# 프로모션 등으로 바뀔 수 있는 정책 값이라 코드 상수가 아니라 설정으로 둔다.
+# 회원가입 웰컴 적립금.
+#
+# 처음에는 1,000,000원이었다. 명세 530p 콘솔 시나리오의 잔액에서 역산한 값인데,
+# 뷰티 커머스 화면에 올려놓고 보니 가입만으로 100만원을 주는 쇼핑몰은 없다.
+# 3만원으로 낮췄다. 실제 신규 가입 적립금이 그 정도다.
+#
+# 낮춘 덕에 얻은 것도 있다. 고가 상품을 사려면 충전이 필요해져
+# 잔액 부족(INSUFFICIENT_POINT)과 충전 흐름이 시연에서 자연스럽게 드러난다.
+# 100만원이면 무엇을 사든 남아서 그 경로를 보여줄 수 없었다. (D29)
 shop:
   signup:
-    initial-point: ${SIGNUP_INITIAL_POINT:1000000}
+    initial-point: ${SIGNUP_INITIAL_POINT:30000}
 
   jwt:
     # HS256은 최소 32바이트를 요구한다. 짧으면 기동 시 예외가 난다.
@@ -90,6 +97,33 @@ shop:
     # 비관적 락 대기 한도. 실제 적용은 아래 datasource의 lock_timeout이 한다.
     # 이 값은 문서와 테스트가 참조하는 기준값이다.
     lock-timeout: ${SHOP_LOCK_TIMEOUT:3s}
+
+  payment:
+    # 카드번호 암호화 키. AES-256이라 32바이트 이상이어야 한다. (D32)
+    # 기본값을 두지 않는다. 커밋된 키로 암호화하면 암호화하지 않은 것과 같다. (D26)
+    encryption-key: ${PAYMENT_ENCRYPTION_KEY:}
+    # 모의 카드사 주소. 실제 PG로 바꾸려면 이 값만 바꾸면 된다.
+    issuer-url: ${PAYMENT_ISSUER_URL:http://localhost:8080/mock-issuer}
+
+  reward:
+    # 구매 적립률(%). (D31)
+    #
+    # 명세의 결제 모델은 포인트 차감이다. 그 위에 적립을 얹어
+    # 실제 뷰티 커머스처럼 "쓰면 쌓이는" 흐름을 만든다.
+    #
+    # 5%는 국내 뷰티 커머스의 일반적인 기본 적립률에 맞춘 값이다.
+    # 0으로 두면 적립하지 않고 명세 그대로 동작한다.
+    rate: ${SHOP_REWARD_RATE:5}
+
+  waiting-room:
+    # 선착순 대기열. (D30)
+    #
+    # 기본은 꺼둔다. Redis가 없는 환경에서도 애플리케이션이 그대로 동작해야 한다.
+    # 명세 559p의 단독 컨테이너 실행(H2 내장, Redis 없음)이 그런 경우다.
+    enabled: ${SHOP_WAITING_ROOM:false}
+    # 동시에 입장시킬 인원. 서버가 감당할 주문 처리량에 맞춘다.
+    # D22 측정에서 200 동시 요청을 문제없이 처리했으므로 그 절반을 기준으로 잡았다.
+    admit-count: ${SHOP_WAITING_ROOM_ADMIT:100}
 
   flash-sale:
     # 선착순 수량을 지키는 방법. OPTIMISTIC / PESSIMISTIC / ATOMIC_UPDATE / REDIS (D23)
@@ -214,6 +248,20 @@ spring:
     properties:
       hibernate:
         show_sql: true
+
+shop:
+  payment:
+    # 로컬 개발 전용 키다. local 프로파일은 H2 인메모리라 배포 대상이 아니다.
+    # 운영(prod)에는 이 블록이 없으므로 키를 주지 않으면 기동에 실패한다. (D26)
+    encryption-key: ${PAYMENT_ENCRYPTION_KEY:local-development-only-card-encryption-key-32b}
+
+  waiting-room:
+    # 로컬에서는 켠다. 대기열 화면을 시연하려면 실제로 동작해야 한다.
+    #
+    # 정원을 3으로 낮춘다. 운영 기본값 100으로 두면 사람 몇 명으로는
+    # 아무도 대기 화면을 보지 못해 시연이 되지 않는다.
+    enabled: ${SHOP_WAITING_ROOM:true}
+    admit-count: ${SHOP_WAITING_ROOM_ADMIT:3}
 
 logging:
   pattern:

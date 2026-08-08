@@ -12,6 +12,8 @@ import org.springframework.web.bind.annotation.RestController;
 import com.sk.skala.shopapi.global.idempotency.IdempotentExecutor;
 import com.sk.skala.shopapi.global.security.AuthenticatedCustomer;
 import com.sk.skala.shopapi.order.app.OrderService;
+import com.sk.skala.shopapi.order.dto.CheckoutRequest;
+import com.sk.skala.shopapi.order.dto.CheckoutResponse;
 import com.sk.skala.shopapi.order.dto.OrderListResponse;
 import com.sk.skala.shopapi.order.dto.OrderRequest;
 
@@ -65,6 +67,9 @@ public class OrderController {
     private final OrderService orderService;
     private final IdempotentExecutor idempotentExecutor;
 
+    /** 카드 결제를 포함한 주문 처리. 명세 경로는 이쪽을 쓰지 않는다. (D31, D32) */
+    private final com.sk.skala.shopapi.order.app.CheckoutService checkoutService;
+
     /**
      * 내 주문 목록을 조회한다.
      *
@@ -95,6 +100,30 @@ public class OrderController {
         return idempotentExecutor.execute(
                 idempotencyKey, principal.customerId(), request, OrderListResponse.class,
                 () -> orderService.placeOrder(principal.customerId(), request));
+    }
+
+    /**
+     * 결제 수단을 지정해 주문한다. (D31, D32)
+     *
+     * <p>{@code POST /api/orders}가 명세의 포인트 전액 결제라면, 이쪽은 카드 결제와
+     * 포인트 부분 사용을 다룬다. 경로를 나눈 이유는 명세 요청 모양을 건드리지 않기 위해서다.
+     * 필드를 늘리면 명세대로 보낸 요청이 검증에 걸릴 수 있다.
+     *
+     * <p>적립은 <b>실제로 낸 금액(카드분)</b> 기준이다. 포인트로 낸 부분에 적립하면
+     * 포인트가 포인트를 낳아 결제 없이 잔액이 늘어난다.
+     */
+    @Operation(
+            summary = "결제 주문",
+            description = "카드 결제와 포인트 부분 사용을 지원한다. 적립은 카드 결제액 기준이다.")
+    @PostMapping("/checkout")
+    public CheckoutResponse checkout(
+            @AuthenticationPrincipal AuthenticatedCustomer principal,
+            @RequestHeader(IDEMPOTENCY_KEY) @NotBlank(message = "Idempotency-Key 헤더는 필수입니다") String idempotencyKey,
+            @Valid @RequestBody CheckoutRequest request) {
+
+        return idempotentExecutor.execute(
+                idempotencyKey, principal.customerId(), request, CheckoutResponse.class,
+                () -> checkoutService.checkout(principal.customerId(), request));
     }
 
     /**

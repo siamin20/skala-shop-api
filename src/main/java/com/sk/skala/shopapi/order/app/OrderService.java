@@ -47,6 +47,9 @@ import lombok.RequiredArgsConstructor;
 public class OrderService {
 
     private final CustomerRepository customerRepository;
+
+    /** 구매 적립 정책. 결제한 금액의 일정 비율을 포인트로 되돌려준다. (D31) */
+    private final RewardPolicy rewardPolicy;
     private final ProductRepository productRepository;
     private final OrderItemRepository orderItemRepository;
 
@@ -98,6 +101,22 @@ public class OrderService {
      */
     @Transactional
     public OrderListResponse placeOrder(String customerId, OrderRequest request) {
+        // 명세의 기본 동작. 전액을 포인트로 낸다.
+        return placeOrderWithPayment(customerId, request, null);
+    }
+
+    /**
+     * 포인트 사용액을 지정해 주문한다. (D31)
+     *
+     * <p>{@code usePoint}가 {@code null}이면 전액 포인트 결제다. 명세의 동작이다.
+     * 값이 있으면 그만큼만 포인트에서 빼고 나머지는 이미 카드로 결제된 것으로 본다.
+     *
+     * <p>카드 승인은 여기서 하지 않는다. 이 메서드는 트랜잭션 안에서 돌고,
+     * 그 안에서 외부를 부르면 응답을 기다리는 동안 락을 붙잡는다. (D32)
+     */
+    @Transactional
+    public OrderListResponse placeOrderWithPayment(String customerId, OrderRequest request,
+            Money usePoint) {
         // 비관적 락. 재고를 읽고 검사하고 차감하는 동안 다른 요청이 끼어들지 못한다.
         // 락 없이 읽으면 두 요청이 같은 재고를 보고 둘 다 검사를 통과한다.
         Product product = lockProductOrThrow(request.productId());
@@ -106,19 +125,29 @@ public class OrderService {
         // 총액은 상품의 현재 가격으로 계산한다.
         Money totalPrice = product.totalPriceOf(request.quantity());
 
+        // 포인트로 낼 금액. 지정하지 않으면 전액이다(명세 기본).
+        Money pointPortion = (usePoint == null) ? totalPrice : usePoint;
+
         // 재고를 먼저 줄인다. 포인트를 먼저 차감하면, 재고가 부족해 실패했을 때
         // 롤백에 기대야 한다. 롤백은 동작하지만 "실패할 것을 먼저 확인한다"는 순서가
         // 읽는 사람에게 더 분명하다.
         product.deductStock(request.quantity());
-        customer.deductPoint(totalPrice);
 
-        // 차감한 금액을 그대로 항목에 넘긴다. 항목이 상품 가격을 다시 읽으면
-        // 그 사이 가격이 바뀌었을 때 차감액과 환급 재원이 어긋난다.
+        // 포인트로 내는 만큼만 차감한다. 나머지는 카드로 이미 승인됐다. (D31)
+        if (!pointPortion.isZero()) {
+            customer.deductPoint(pointPortion);
+        }
+
+        // 결제 총액을 그대로 항목에 넘긴다. 항목이 상품 가격을 다시 읽으면
+        // 그 사이 가격이 바뀌었을 때 결제액과 환급 재원이 어긋난다. (D15)
+        //
+        // 그중 포인트로 낸 금액도 함께 기록한다. 취소할 때 "포인트로 얼마를 돌려주고
+        // 카드로 얼마를 환불할지" 나누려면 이 값이 필요하다. (D31)
         orderItemRepository.findByCustomerAndProduct(customer, product)
                 .ifPresentOrElse(
-                        existing -> existing.increase(request.quantity(), totalPrice),
-                        () -> orderItemRepository.save(
-                                new OrderItem(customer, product, request.quantity())));
+                        existing -> existing.increase(request.quantity(), totalPrice, pointPortion),
+                        () -> orderItemRepository.save(new OrderItem(
+                                customer, product, request.quantity(), totalPrice, pointPortion)));
 
         return currentOrders(customer);
     }
@@ -155,11 +184,23 @@ public class OrderService {
                 .orElseThrow(() -> new BusinessException(
                         ErrorCode.DATA_NOT_FOUND, "주문 내역이 없습니다: " + product.getName()));
 
-        Money refund = orderItem.cancel(request.quantity());
+        OrderItem.Refund refund = orderItem.cancel(request.quantity());
         // 취소한 수량만큼 재고를 되돌린다. 되돌리지 않으면 취소가 반복될수록
         // 팔지도 않은 재고가 사라진다.
         product.restoreStock(request.quantity());
-        customer.refundPoint(refund);
+
+        // 포인트로 낸 만큼만 포인트로 돌려준다. 카드로 낸 부분은 카드로 환불된다. (D31)
+        // 전액을 포인트로 돌려주면 카드로 낸 돈만큼 포인트가 늘어난다.
+        customer.refundPoint(refund.pointPortion());
+
+        // 적립도 함께 회수한다. 카드로 낸 금액에만 적립했으므로 회수도 그 기준이다.
+        // 회수하지 않으면 주문과 취소를 반복해 포인트를 무한히 만들 수 있다.
+        Money rewardToTake = rewardPolicy.rewardFor(refund.cardPortion());
+        if (!rewardToTake.isZero()) {
+            // 적립분보다 잔액이 적을 수 있다. 이미 써버린 경우다.
+            // 가진 만큼만 회수한다. 음수 잔액을 만들 수는 없다.
+            customer.deductPointUpTo(rewardToTake);
+        }
 
         if (orderItem.isEmpty()) {
             orderItemRepository.delete(orderItem);

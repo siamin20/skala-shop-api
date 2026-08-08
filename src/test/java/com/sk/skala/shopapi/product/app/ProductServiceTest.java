@@ -35,6 +35,16 @@ import com.sk.skala.shopapi.product.dto.ProductUpdateRequest;
 @Transactional
 class ProductServiceTest {
 
+    /**
+     * 선착순 이벤트 저장소.
+     *
+     * <p>이 테스트가 이벤트를 쓰지는 않는다. 그런데 V8 시드가 넣은 이벤트 행이
+     * 상품을 외래 키로 참조하기 때문에, 상품을 지우기 전에 이벤트부터 지워야 한다.
+     * 순서를 지키지 않으면 제약 위반으로 setUp 자체가 실패한다.
+     */
+    @Autowired
+    private com.sk.skala.shopapi.event.domain.FlashSaleRepository flashSaleRepository;
+
     @Autowired
     private ProductService productService;
 
@@ -51,6 +61,8 @@ class ProductServiceTest {
         // IDENTITY 전략의 save()는 ID를 받아야 하므로 INSERT를 즉시 실행한다.
         // 그래서 시드가 지워지기 전에 같은 이름의 INSERT가 먼저 나가 유니크 제약에 걸린다.
         // deleteAllInBatch()는 DELETE 한 문장을 바로 실행해 이 순서 문제를 없앤다.
+        // 상품을 참조하는 쪽을 먼저 지운다. 순서를 뒤집으면 외래 키에 걸린다.
+        flashSaleRepository.deleteAllInBatch();
         productRepository.deleteAllInBatch();
     }
 

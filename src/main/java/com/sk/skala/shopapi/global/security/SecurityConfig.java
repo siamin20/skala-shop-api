@@ -89,6 +89,16 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                         .requestMatchers("/actuator/info", "/h2-console/**").permitAll()
 
+                        // 모의 카드사. (D32)
+                        //
+                        // 실제로는 다른 회사의 다른 서버라 우리 인증 체계가 적용될 자리가 아니다.
+                        // 과제 범위에서 외부 PG와 계약할 수 없어 같은 애플리케이션에 뒀을 뿐이다.
+                        // 막아두면 우리 서버가 자기 자신을 부를 때 401을 받는다.
+                        //
+                        // 실제 배포에서는 이 컨트롤러를 아예 빼야 한다. 그래서 별도 경로
+                        // (/mock-issuer)로 분리해 한 줄만 지우면 사라지도록 했다.
+                        .requestMatchers("/mock-issuer/**").permitAll()
+
                         // ── 관리자 전용 ──
                         .requestMatchers(HttpMethod.POST, "/api/products").hasRole(Role.ADMIN.name())
                         .requestMatchers(HttpMethod.PUT, "/api/products/*").hasRole(Role.ADMIN.name())

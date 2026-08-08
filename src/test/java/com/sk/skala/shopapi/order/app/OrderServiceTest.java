@@ -37,6 +37,16 @@ import com.sk.skala.shopapi.product.domain.ProductRepository;
 @Transactional
 class OrderServiceTest {
 
+    /**
+     * 선착순 이벤트 저장소.
+     *
+     * <p>이 테스트가 이벤트를 쓰지는 않는다. 그런데 V8 시드가 넣은 이벤트 행이
+     * 상품을 외래 키로 참조하기 때문에, 상품을 지우기 전에 이벤트부터 지워야 한다.
+     * 순서를 지키지 않으면 제약 위반으로 setUp 자체가 실패한다.
+     */
+    @Autowired
+    private com.sk.skala.shopapi.event.domain.FlashSaleRepository flashSaleRepository;
+
     @Autowired
     private OrderService orderService;
 
@@ -60,6 +70,8 @@ class OrderServiceTest {
         // 참조하는 쪽부터 지운다. 반대로 하면 외래 키 제약에 걸린다.
         orderItemRepository.deleteAllInBatch();
         customerRepository.deleteAllInBatch();
+        // 상품을 참조하는 쪽을 먼저 지운다. 순서를 뒤집으면 외래 키에 걸린다.
+        flashSaleRepository.deleteAllInBatch();
         productRepository.deleteAllInBatch();
 
         고객 = customerRepository.save(

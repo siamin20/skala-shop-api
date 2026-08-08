@@ -151,6 +151,21 @@ public class Customer {
     }
 
     /**
+     * 가진 만큼만 차감한다. 적립 회수에 쓴다. (D31)
+     *
+     * <p>{@code deductPoint}와 다르다. 잔액이 모자라면 예외를 던지는 대신
+     * 남은 만큼만 가져간다.
+     *
+     * <p>이렇게 하는 이유: 적립받은 포인트를 이미 다 써버린 뒤에 취소하는 경우가 있다.
+     * 그때 예외를 던지면 <b>취소 자체가 불가능해진다.</b> 사용자는 환급도 못 받고
+     * 상품도 못 쓰는 상태에 갇힌다. 회수하지 못한 만큼은 손실로 받아들이는 편이 낫다.
+     */
+    public void deductPointUpTo(Money amount) {
+        this.point = this.point.isLessThan(amount) ? Money.ZERO : this.point.minus(amount);
+    }
+
+
+    /**
      * 포인트를 충전한다.
      *
      * <p>구현은 {@link #refundPoint(Money)}와 같지만 메서드를 나눈다.

@@ -51,8 +51,29 @@ public class FlashSaleService {
     private final FlashSaleStrategies strategies;
     private final FlashSaleProperties properties;
 
+    /** 특가 구매에도 같은 적립률을 적용한다. 화면에서 두 경로의 적립이 달라 보이면 혼란스럽다. (D31) */
+    private final com.sk.skala.shopapi.order.app.RewardPolicy rewardPolicy;
+
+    /**
+     * 진행 중이거나 예정된 이벤트만 반환한다. (D29)
+     *
+     * <p>기간이 끝난 이벤트는 목록에서 뺀다. 남겨두면 시간이 갈수록 지난 이벤트가 쌓여
+     * <b>지금 참여할 수 있는 것을 찾기 어려워진다.</b> 사용자가 목록에서 기대하는 것은
+     * "지금 살 수 있는 것"이지 판매 이력이 아니다.
+     *
+     * <p>반면 <b>기간 중에 수량이 소진된 것은 남긴다.</b> "이 특가는 이미 마감됐다"는
+     * 정보 자체가 의미 있고, 다음 특가를 기다리게 하는 신호이기도 하다.
+     * 조용히 사라지면 사용자는 자기가 놓친 줄도 모른다.
+     *
+     * <p>지운 것이 아니라 감춘 것이다. 행은 그대로 남아 판매 이력을 보존한다.
+     */
     public List<FlashSaleResponse> getFlashSales() {
-        return flashSaleRepository.findAll().stream().map(FlashSaleResponse::from).toList();
+        Instant now = Instant.now();
+        return flashSaleRepository.findAll().stream()
+                .filter(sale -> sale.getEndsAt().isAfter(now))
+                .sorted(java.util.Comparator.comparing(FlashSale::getEndsAt))
+                .map(FlashSaleResponse::from)
+                .toList();
     }
 
     public FlashSaleResponse getFlashSale(Long id) {
@@ -96,6 +117,12 @@ public class FlashSaleService {
 
         Money totalPrice = product.totalPriceOf(request.quantity());
         customer.deductPoint(totalPrice);
+
+        // 일반 주문과 같은 적립률을 적용한다. (D31)
+        Money reward = rewardPolicy.rewardFor(totalPrice);
+        if (!reward.isZero()) {
+            customer.chargePoint(reward);
+        }
 
         orderItemRepository.findByCustomerAndProduct(customer, product)
                 .ifPresentOrElse(
