@@ -51,6 +51,9 @@ class CustomerServiceTest {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    @Autowired
+    private jakarta.validation.Validator validator;
+
     @BeforeEach
     void setUp() {
         // 참조하는 쪽부터 지운다. 반대로 하면 외래 키 제약에 걸린다.
@@ -64,6 +67,12 @@ class CustomerServiceTest {
                 new Customer(id, passwordEncoder.encode("pw123456"), Money.of(point)));
     }
 
+    /**
+     * 회원가입 검증.
+     *
+     * <p>초기 포인트 지급과 아이디 중복 차단이 대상이지만, 실제 무게는 <b>비밀번호 해싱</b>에 있다.
+     * 해싱을 빠뜨려도 다른 테스트는 전부 통과하므로 이 묶음이 유일한 방어선이다.
+     */
     @Nested
     @DisplayName("회원가입")
     class SignUp {
@@ -106,6 +115,27 @@ class CustomerServiceTest {
         }
 
         @Test
+        @DisplayName("BCrypt가 반영하지 못하는 길이의 비밀번호는 검증에서 걸러진다")
+        void rejectPasswordOverBcryptLimit() {
+            // 한글 64자 = UTF-8 192바이트. @Size(max = 64)는 문자 수만 세므로 통과하지만
+            // BCrypt는 72바이트에서 잘라내, 앞 24자가 같은 다른 비밀번호와 같은 해시가 된다.
+            String 한글64자 = "가".repeat(64);
+
+            assertThat(한글64자.getBytes(java.nio.charset.StandardCharsets.UTF_8).length)
+                    .isEqualTo(192);
+            assertThat(validator.validate(new SignUpRequest("skala01", 한글64자)))
+                    .isNotEmpty();
+        }
+
+        @Test
+        @DisplayName("72바이트 이내면 한글 비밀번호도 통과한다")
+        void allowMultibytePasswordWithinLimit() {
+            // 한글 24자 = 72바이트. 경계값이 막히지 않는지 확인한다.
+            assertThat(validator.validate(new SignUpRequest("skala01", "가".repeat(24))))
+                    .isEmpty();
+        }
+
+        @Test
         @DisplayName("아이디가 중복이면 DATA_DUPLICATED")
         void rejectDuplicateId() {
             가입고객("skala01", 0);
@@ -117,6 +147,13 @@ class CustomerServiceTest {
         }
     }
 
+    /**
+     * 조회 검증.
+     *
+     * <p>고객 정보와 주문 목록을 한 응답으로 묶는 경로를 확인한다.
+     * 주문이 없는 경우를 따로 두는 이유는, 빈 목록에서 합계가 0이 아니라
+     * 예외로 터지는 실수가 흔하기 때문이다.
+     */
     @Nested
     @DisplayName("조회")
     class Read {
@@ -174,6 +211,12 @@ class CustomerServiceTest {
         }
     }
 
+    /**
+     * 포인트 충전 검증.
+     *
+     * <p>명세의 "덮어쓰기"를 "누적"으로 바꾼 결정(D13)이 실제로 지켜지는지 고정한다.
+     * 덮어쓰기로 되돌아가면 잔액이 충전액과 같아지므로 첫 테스트가 바로 깨진다.
+     */
     @Nested
     @DisplayName("포인트 충전")
     class ChargePoint {
@@ -201,6 +244,13 @@ class CustomerServiceTest {
         }
     }
 
+    /**
+     * 탈퇴 검증.
+     *
+     * <p>외래 키 제약 때문에 주문 항목을 먼저 지워야 한다는 점, 그리고 고객이 사라져도
+     * 상품은 남아야 한다는 점을 확인한다. 삭제 범위를 잘못 잡으면 다른 고객의 주문까지
+     * 참조하는 상품이 함께 사라진다.
+     */
     @Nested
     @DisplayName("탈퇴")
     class Delete {

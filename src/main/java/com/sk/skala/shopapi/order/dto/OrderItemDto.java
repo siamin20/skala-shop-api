@@ -26,6 +26,16 @@ public record OrderItemDto(
         int quantity,
         long totalPrice) {
 
+    /**
+     * 주문 항목을 응답으로 옮긴다.
+     *
+     * <p>단가를 상품의 현재 가격이 아니라 주문 항목의 스냅샷에서 가져온다.
+     * 화면에 지금 가격을 보여주면, 취소했을 때 실제로 돌려받는 금액과 숫자가 어긋나
+     * 사용자가 환불 오류로 오해한다.
+     *
+     * <p>합계도 여기서 계산해 담는다. 클라이언트가 단가 × 수량을 다시 계산하게 하면
+     * 반올림이나 할인 규칙이 생겼을 때 서버와 화면의 값이 갈라진다.
+     */
     public static OrderItemDto from(OrderItem orderItem) {
         return new OrderItemDto(
                 orderItem.getProduct().getId(),

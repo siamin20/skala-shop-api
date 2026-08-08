@@ -6,7 +6,7 @@ import jakarta.validation.constraints.Positive;
 /**
  * 포인트 충전 요청.
  *
- * <p>과제 명세 552p의 {@code updateCustomer}는 "포인트 업데이트"라고만 적혀 있고
+ * <p>D13: 과제 명세 552p의 {@code updateCustomer}는 "포인트 업데이트"라고만 적혀 있고
  * 엔티티를 통째로 받는다. 그대로 두면 <b>클라이언트가 자기 포인트를 임의의 값으로
  * 덮어쓸 수 있다.</b> 그래서 "얼마로 바꾼다"가 아니라 "얼마를 더한다"로 바꿨다.
  *

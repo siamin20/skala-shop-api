@@ -14,6 +14,13 @@ import com.sk.skala.shopapi.customer.domain.Customer;
  */
 public record CustomerResponse(String customerId, long point) {
 
+    /**
+     * 엔티티를 응답으로 옮긴다.
+     *
+     * <p>이 경계를 두는 이유는 비밀번호 해시가 응답에 섞이지 않게 하기 위해서다.
+     * 엔티티를 그대로 내보내면 "패스워드를 null로 지우는" 처리를 응답마다 기억해야 하고,
+     * 한 번만 빠뜨려도 해시가 유출된다. 담을 필드를 여기서 못 박으면 실수할 자리가 없다.
+     */
     public static CustomerResponse from(Customer customer) {
         return new CustomerResponse(customer.getCustomerId(), customer.getPoint().getAmount());
     }

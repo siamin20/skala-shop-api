@@ -3,6 +3,7 @@ package com.sk.skala.shopapi.order.dto;
 import java.util.List;
 
 import com.sk.skala.shopapi.customer.domain.Customer;
+import com.sk.skala.shopapi.global.common.Money;
 import com.sk.skala.shopapi.order.domain.OrderItem;
 
 /**
@@ -26,19 +27,30 @@ public record OrderListResponse(
         long totalSpent,
         List<OrderItemDto> products) {
 
+    /**
+     * 고객과 주문 목록을 하나의 응답으로 묶는다.
+     *
+     * <p>둘을 한 응답에 담는 이유는 주문 내역 화면이 잔액과 목록을 함께 보여주기 때문이다.
+     * 나눠 두면 화면 하나를 그리는 데 요청이 두 번 나가고, 그 사이에 주문이 일어나면
+     * 잔액과 목록이 서로 다른 시점을 가리킨다.
+     *
+     * <p>합계는 {@code long}이 아니라 {@link Money}로 누적한다. 금액 규칙(음수 불가, 오버플로 검사)을
+     * 도메인 타입 안에 두기 위해서다. 원시 타입으로 더하면 그 검사를 우회하게 되고,
+     * 응답을 만드는 이 지점에서만 조용히 규칙 밖으로 나가는 값이 생긴다.
+     */
     public static OrderListResponse of(Customer customer, List<OrderItem> orderItems) {
         List<OrderItemDto> products = orderItems.stream()
                 .map(OrderItemDto::from)
                 .toList();
 
-        long totalSpent = products.stream()
-                .mapToLong(OrderItemDto::totalPrice)
-                .sum();
+        Money totalSpent = orderItems.stream()
+                .map(OrderItem::totalPrice)
+                .reduce(Money.ZERO, Money::plus);
 
         return new OrderListResponse(
                 customer.getCustomerId(),
                 customer.getPoint().getAmount(),
-                totalSpent,
+                totalSpent.getAmount(),
                 products);
     }
 }

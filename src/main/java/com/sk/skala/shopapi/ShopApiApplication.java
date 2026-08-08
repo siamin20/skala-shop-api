@@ -21,7 +21,7 @@ import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
  * 하위 패키지로 내리면 그 바깥의 컴포넌트가 스캔되지 않는다.
  */
 @SpringBootApplication
-// @ConfigurationProperties가 붙은 클래스를 찾아 빈으로 등록한다.
+// 설정 클래스를 @Bean 선언 없이 등록해, 설정이 늘어도 등록 코드를 따로 관리하지 않는다.
 // 이게 없으면 SignUpProperties가 주입되지 않아 기동에 실패한다.
 @ConfigurationPropertiesScan
 public class ShopApiApplication {

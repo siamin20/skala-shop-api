@@ -1,5 +1,7 @@
 package com.sk.skala.shopapi.customer.dto;
 
+import com.sk.skala.shopapi.global.validation.BcryptSafePassword;
+
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
@@ -28,9 +30,11 @@ public record SignUpRequest(
         @Pattern(regexp = "^[a-zA-Z0-9_-]+$", message = "아이디는 영문, 숫자, -, _만 사용할 수 있습니다")
         String customerId,
 
-        // BCrypt는 72바이트를 넘는 입력을 조용히 잘라낸다. 상한을 두어 그 지점에
-        // 닿지 않게 한다. 하한 8자는 최소한의 무차별 대입 저항을 위한 것이다.
+        // 하한 8자는 최소한의 무차별 대입 저항을 위한 것이다.
+        // 상한은 @Size로 걸 수 없다. @Size는 문자 수를 세는데 BCrypt는 바이트 수로 자르기 때문에,
+        // 한글처럼 여러 바이트를 쓰는 문자에서 검사가 새어 나간다. @BcryptSafePassword 참고.
         @NotBlank(message = "비밀번호는 필수입니다")
-        @Size(min = 8, max = 64, message = "비밀번호는 8~64자여야 합니다")
+        @Size(min = 8, message = "비밀번호는 8자 이상이어야 합니다")
+        @BcryptSafePassword
         String password) {
 }
