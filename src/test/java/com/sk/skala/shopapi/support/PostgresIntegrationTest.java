@@ -5,6 +5,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
@@ -62,6 +63,20 @@ public abstract class PostgresIntegrationTest {
             .withPassword("skalashop");
 
     /**
+     * Redis. 선착순 이벤트의 원자 카운터 전략이 쓴다. (D23)
+     *
+     * <p>Redis를 쓰지 않는 테스트에도 함께 띄운다. 별도 부모 클래스로 나누면 프로퍼티가
+     * 달라져 <b>스프링 컨텍스트가 두 벌</b>이 되고, 그때마다 Flyway가 다시 돌아 전체가 느려진다.
+     * 컨테이너 하나를 더 띄우는 비용이 컨텍스트를 하나 더 만드는 비용보다 싸다.
+     *
+     * <p>Redis 전용 모듈 대신 {@link GenericContainer}를 쓴다. Testcontainers 공식 BOM에
+     * Redis 모듈이 없고, 포트 하나만 열면 되는 단순한 경우라 굳이 외부 모듈을 더할 이유가 없다.
+     */
+    private static final GenericContainer<?> REDIS =
+            new GenericContainer<>(DockerImageName.parse("redis:7-alpine"))
+                    .withExposedPorts(6379);
+
+    /**
      * 컨테이너를 띄우고 그 접속 정보를 스프링 설정에 주입한다.
      *
      * <p>포트를 고정하지 않고 컨테이너가 받은 임의 포트를 그대로 쓴다.
@@ -79,5 +94,9 @@ public abstract class PostgresIntegrationTest {
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
+
+        REDIS.start();
+        registry.add("spring.data.redis.host", REDIS::getHost);
+        registry.add("spring.data.redis.port", () -> REDIS.getMappedPort(6379));
     }
 }

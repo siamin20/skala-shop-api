@@ -47,7 +47,7 @@ class MigrationCompatibilityTest extends PostgresIntegrationTest {
     class Migrations {
 
         @Test
-        @DisplayName("V1~V5가 모두 성공으로 기록된다")
+        @DisplayName("V1~V6이 모두 성공으로 기록된다")
         void allMigrationsSucceeded() {
             List<Map<String, Object>> history = jdbc.queryForList(
                     "SELECT version, description, success FROM flyway_schema_history "
@@ -55,7 +55,7 @@ class MigrationCompatibilityTest extends PostgresIntegrationTest {
 
             assertThat(history)
                     .extracting(row -> row.get("version"))
-                    .containsExactly("1", "2", "3", "4", "5");
+                    .containsExactly("1", "2", "3", "4", "5", "6");
 
             // 하나라도 실패했다면 Flyway가 기동을 막았겠지만, 명시적으로 확인해둔다.
             assertThat(history).allSatisfy(row ->
@@ -63,7 +63,7 @@ class MigrationCompatibilityTest extends PostgresIntegrationTest {
         }
 
         @Test
-        @DisplayName("네 테이블이 모두 만들어진다")
+        @DisplayName("도메인 테이블이 모두 만들어진다")
         void tablesExist() {
             List<String> tables = jdbc.queryForList(
                     "SELECT table_name FROM information_schema.tables "
@@ -72,7 +72,8 @@ class MigrationCompatibilityTest extends PostgresIntegrationTest {
                     String.class);
 
             assertThat(tables)
-                    .containsExactly("customer", "idempotency_key", "order_item", "product");
+                    .containsExactly(
+                            "customer", "flash_sale", "idempotency_key", "order_item", "product");
         }
 
         @Test
