@@ -299,10 +299,19 @@ spring:
       on-profile: prod
 
   datasource:
-    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/skalashop}
+    # DB 접속 정보에 기본값을 두지 않는다. (D26)
+    #
+    # 이 저장소는 공개되어 있다. 여기 skalashop/skalashop 같은 값을 적어두면
+    # 그건 "예시"가 아니라 누구나 아는 자격 증명이 된다. 환경변수 설정을
+    # 한 번 빠뜨리면 운영 DB가 그 값으로 뜬다.
+    #
+    # JWT 서명 키와 카드 암호화 키에 적용한 원칙과 같다.
+    # 없으면 기동을 실패시킨다. 주석으로 "운영에서 바꾸세요"라고 적는 것으로는 부족하다.
+    # 조용히 뜨고 나면 아무도 다시 확인하지 않는다.
+    url: ${DATABASE_URL}
     driver-class-name: org.postgresql.Driver
-    username: ${DATABASE_USERNAME:skalashop}
-    password: ${DATABASE_PASSWORD:skalashop}
+    username: ${DATABASE_USERNAME}
+    password: ${DATABASE_PASSWORD}
 
     hikari:
       data-source-properties:
