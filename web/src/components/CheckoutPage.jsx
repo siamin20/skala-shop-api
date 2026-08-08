@@ -69,7 +69,12 @@ export default function CheckoutPage({
   const cardAmount = total - applied
   const earned = method === 'CARD' ? Math.floor((cardAmount * 5) / 100) : 0
 
-  const set = (field) => (e) => setForm({ ...form, [field]: e.target.value })
+  // 이전 상태를 인자로 받는다. 바깥의 form을 그대로 펼치면 같은 렌더에서 두 번 갱신될 때
+  // 앞의 것이 사라진다. 주소 검색 결과를 채우는 fillFromSearch도 같은 방식을 쓴다.
+  const set = (field) => (e) => {
+    const value = e.target.value
+    setForm((prev) => ({ ...prev, [field]: value }))
+  }
 
   const fillFromSearch = useCallback(({ zipcode, address }) => {
     setForm((f) => ({ ...f, zipcode, address }))
@@ -296,11 +301,15 @@ export default function CheckoutPage({
                     />
                     <div className="zip-row">
                       <input placeholder="MM/YY" value={card.expiry}
-                             onChange={(e) => setCard({ ...card, expiry: e.target.value })} />
+                             onChange={(e) => {
+                               const v = e.target.value
+                               setCard((prev) => ({ ...prev, expiry: v }))
+                             }} />
                       <input placeholder="CVC" value={card.cvc} inputMode="numeric"
-                             onChange={(e) => setCard({
-                               ...card, cvc: e.target.value.replace(/\D/g, ''),
-                             })} />
+                             onChange={(e) => {
+                               const v = e.target.value.replace(/\D/g, '')
+                               setCard((prev) => ({ ...prev, cvc: v }))
+                             }} />
                     </div>
                   </div>
                 )}

@@ -251,7 +251,25 @@ export default function App() {
   }
 
   if (booting) return <div className="empty">불러오는 중…</div>
-  if (!me) return <Login onLoggedIn={setMe} onError={showError} />
+
+  /*
+   * 로그인 화면에도 토스트를 함께 그린다.
+   *
+   * 예전에는 Login만 반환했다. 그런데 로그인·회원가입 실패는 showError로 토스트 상태를
+   * 바꾸기만 하고, 그 토스트를 그리는 <Toast>는 로그인 뒤 화면에만 있었다.
+   * 그래서 비밀번호를 틀려도 화면에 아무 일도 일어나지 않았다.
+   *
+   * 서버는 401을 정확히 돌려주고 있었고 클라이언트도 그것을 받고 있었다.
+   * 보여줄 자리만 없었다. 실패를 조용히 삼키는 화면은 고장 난 것으로 보인다.
+   */
+  if (!me) {
+    return (
+      <>
+        <Login onLoggedIn={setMe} onError={showError} />
+        <Toast toast={toast} onClose={() => setToast(null)} />
+      </>
+    )
+  }
 
   const totalPages = products?.totalPages ?? 0
 
