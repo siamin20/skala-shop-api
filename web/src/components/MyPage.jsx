@@ -7,7 +7,7 @@ const won = (n) => n.toLocaleString('ko-KR')
  * 주문 내역은 <b>산 뒤에 보는 것</b>이라 성격이 다르다.
  * 실제 커머스가 마이페이지로 모으는 이유이기도 하다.
  */
-export default function MyPage({ me, orders, address, busy, onCancel }) {
+export default function MyPage({ me, orders, addresses, busy, onCancel }) {
   const products = orders?.products ?? []
 
   return (
@@ -23,16 +23,28 @@ export default function MyPage({ me, orders, address, busy, onCancel }) {
       </section>
 
       <section className="mp-block">
-        <h3>배송지</h3>
-        {address ? (
-          <div className="mp-address">
-            <b>{address.recipient}</b>
-            <span className="muted">{address.phone}</span>
-            <p>{address.fullAddress}</p>
+        <h3>배송지 <span className="muted small">{addresses?.length ?? 0}개</span></h3>
+
+        {/* 여러 개를 저장할 수 있다. 기본 배송지가 목록 맨 앞에 온다. */}
+        {addresses?.length ? (
+          <div className="mp-address-list">
+            {addresses.map((a) => (
+              <div key={a.id} className="mp-address">
+                <div className="addr-top">
+                  <b>{a.label || a.recipient}</b>
+                  {a.isDefault && <span className="badge-default">기본</span>}
+                </div>
+                <span className="muted small">{a.recipient} · {a.phone}</span>
+                <p className="small">({a.zipcode}) {a.address} {a.addressDetail}</p>
+                {a.hasEntrancePassword && (
+                  <p className="muted small">공동현관 비밀번호 등록됨</p>
+                )}
+              </div>
+            ))}
           </div>
         ) : (
           <p className="muted small">
-            등록된 배송지가 없습니다. 주문서에서 입력하면 자동으로 저장됩니다.
+            등록된 배송지가 없습니다. 주문서에서 입력하면 저장됩니다.
           </p>
         )}
       </section>

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, getAccessToken, refresh, subscribeToken } from './api/client.js'
 import CartSheet from './components/CartSheet.jsx'
 import ConfirmDialog from './components/ConfirmDialog.jsx'
-import CheckoutSheet from './components/CheckoutSheet.jsx'
+import CheckoutPage from './components/CheckoutPage.jsx'
 import FlashSales from './components/FlashSales.jsx'
 import Header from './components/Header.jsx'
 import Home from './components/Home.jsx'
@@ -28,7 +28,7 @@ const SORTS = [
 export default function App() {
   const [me, setMe] = useState(null)
   const [booting, setBooting] = useState(true)
-  const [view, setView] = useState('home')          // home | shop | event | mypage
+  const [view, setView] = useState('home')          // home | shop | event | mypage | checkout
   const [best, setBest] = useState([])              // 홈의 인기 상품
   const [filter, setFilter] = useState({})          // { category, subcategory }
   const [sort, setSort] = useState('BEST')
@@ -38,7 +38,7 @@ export default function App() {
   const [products, setProducts] = useState(null)
   const [orders, setOrders] = useState(null)
   const [sales, setSales] = useState([])
-  const [address, setAddress] = useState(null)
+  const [addresses, setAddresses] = useState([])
 
   const [menuOpen, setMenuOpen] = useState(false)
   const [cartOpen, setCartOpen] = useState(false)
@@ -97,7 +97,7 @@ export default function App() {
     const [saleList, orderList] = await Promise.all([api.flashSales(), api.orders()])
     setSales(saleList)
     setOrders(orderList)
-    try { setAddress(await api.address()) } catch { setAddress(null) }
+    try { setAddresses(await api.addresses()) } catch { setAddresses([]) }
   }, [])
 
   useEffect(() => {
@@ -166,8 +166,20 @@ export default function App() {
     }, 1200)
   }
 
+  /**
+   * 주문서로 넘어간다. (D41)
+   *
+   * 창을 띄우는 대신 화면을 바꾼다. 이전 화면을 기억해 뒀다가 뒤로 가기에서 쓴다.
+   * 기억하지 않으면 특가에서 들어왔든 장바구니에서 들어왔든 항상 홈으로 튕긴다.
+   */
+  function openCheckout(payload) {
+    setCheckout({ ...payload, from: view })
+    setView('checkout')
+    window.scrollTo({ top: 0 })
+  }
+
   function openFlashCheckout(sale) {
-    setCheckout({
+    openCheckout({
       kind: 'flash',
       sale,
       items: [{ productId: sale.productId, name: sale.productName, price: sale.price, quantity: 1 }],
@@ -186,13 +198,14 @@ export default function App() {
   async function submitCheckout(payload) {
     const c = checkout
     setCheckout(null)
+    // 결제를 시작하면 주문서에서 나온다. 결제 중에 뒤로 눌러 다시 제출하는 것을 막는다.
+    setView(c.from === 'checkout' ? 'home' : c.from)
 
     if (c.kind === 'flash') {
       await run(async () => {
         try {
           // 특가는 수량 보호가 먼저다. 참여에 성공해야 결제로 넘어간다.
           await api.joinFlashSale(c.sale.id, 1)
-          if (payload.delivery) await api.saveAddress(payload.delivery)
         } finally {
           await api.leaveQueue(c.sale.id).catch(() => {})
         }
@@ -206,6 +219,7 @@ export default function App() {
         paymentMethod: payload.paymentMethod,
         usePoint: payload.usePoint,
         card: payload.card,
+        deliveryAddressId: payload.deliveryAddressId,
         delivery: payload.delivery,
       })
       cart.clear()
@@ -221,8 +235,19 @@ export default function App() {
   }
 
   function closeCheckout() {
+    // 특가에서 뒤로 나가면 잡아둔 자리를 반드시 내놓는다.
+    // 이걸 빠뜨리면 앞자리가 비지 않아 뒤에 선 사람이 계속 기다린다.
     if (checkout?.kind === 'flash') api.leaveQueue(checkout.sale.id).catch(() => {})
+    setView(checkout?.from ?? 'home')
     setCheckout(null)
+    window.scrollTo({ top: 0 })
+  }
+
+  /** 주문서에서 배송지를 새로 저장한다. 저장한 뒤 목록을 다시 읽어 화면에 반영한다. */
+  async function addAddress(body) {
+    const created = await api.addAddress(body)
+    setAddresses(await api.addresses())
+    return created
   }
 
   if (booting) return <div className="empty">불러오는 중…</div>
@@ -255,7 +280,7 @@ export default function App() {
             categories={categories}
             onSelectCategory={selectCategory}
             onGoEvent={() => { setView('event'); window.scrollTo({ top: 0 }) }}
-            onProduct={(p) => setCheckout({
+            onProduct={(p) => openCheckout({
               kind: 'cart',
               items: [{ productId: p.id, name: p.name, price: p.price, quantity: 1 }],
             })}
@@ -285,7 +310,7 @@ export default function App() {
               products={products?.content ?? []}
               busy={busy}
               onAdd={(product, quantity) => setAddConfirm({ product, quantity })}
-              onBuyNow={(product, quantity) => setCheckout({
+              onBuyNow={(product, quantity) => openCheckout({
                 kind: 'cart',
                 items: [{
                   productId: product.id, name: product.name,
@@ -319,11 +344,24 @@ export default function App() {
           />
         )}
 
+        {view === 'checkout' && checkout && (
+          <CheckoutPage
+            items={checkout.items}
+            point={point}
+            addresses={addresses}
+            busy={busy}
+            onBack={closeCheckout}
+            onSubmit={submitCheckout}
+            onAddAddress={addAddress}
+            onError={showError}
+          />
+        )}
+
         {view === 'mypage' && (
           <MyPage
             me={me}
             orders={orders}
-            address={address}
+            addresses={addresses}
             busy={busy}
             onCancel={(productId, quantity) => run(
               () => api.cancel(productId, quantity), '주문이 취소되었습니다')}
@@ -362,7 +400,7 @@ export default function App() {
         onRemove={cart.remove}
         onCheckout={() => {
           setCartOpen(false)
-          setCheckout({ kind: 'cart', items: cart.items })
+          openCheckout({ kind: 'cart', items: cart.items })
         }}
       />
 
@@ -370,16 +408,6 @@ export default function App() {
         ticket={queue?.ticket}
         saleName={queue?.sale?.name}
         onCancel={cancelQueue}
-      />
-
-      <CheckoutSheet
-        open={!!checkout}
-        items={checkout?.items ?? []}
-        point={point}
-        address={address}
-        busy={busy}
-        onClose={closeCheckout}
-        onSubmit={submitCheckout}
       />
 
       <ConfirmDialog

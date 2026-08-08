@@ -151,9 +151,19 @@ export const api = {
   cancel: (productId, quantity) =>
     request('/api/orders/cancel', { method: 'POST', body: { productId, quantity } }),
 
-  // ── 배송지 (D34) ──
-  address: () => request('/api/delivery-address'),
-  saveAddress: (body) => request('/api/delivery-address', { method: 'PUT', body }),
+  // ── 배송지 (D34, D40) ──
+  //
+  // 배송지는 여러 개를 저장한다. 집과 회사를 번갈아 쓰는 사람이 매번 주소를 다시 치게 하면
+  // 그게 곧 이탈이다. 목록의 첫 항목이 기본 배송지다(서버가 정렬해서 준다).
+  addresses: () => request('/api/delivery-addresses'),
+
+  addAddress: (body) => request('/api/delivery-addresses', { method: 'POST', body }),
+
+  updateAddress: (id, body) =>
+    request(`/api/delivery-addresses/${id}`, { method: 'PUT', body }),
+
+  removeAddress: (id) =>
+    request(`/api/delivery-addresses/${id}`, { method: 'DELETE' }),
 
   // ── 카드 결제 (D31, D32) ──
   checkout: (body) => request('/api/orders/checkout', { method: 'POST', body }),
