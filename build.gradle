@@ -136,6 +136,15 @@ dependencies {
     // Gradle이 JUnit 5 테스트를 실행할 때 필요한 런처.
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 
+    // Redis. 선착순 이벤트의 원자 카운터 비교 대상이다. (D23)
+    //
+    // DB 락과 무엇이 다른지 재보려고 넣는다. Redis는 단일 스레드로 명령을 처리해서
+    // DECR 하나로 원자적 감소가 된다. 락을 걸 필요가 없다는 것이 요점이다.
+    //
+    // 없어도 애플리케이션은 뜬다. 연결이 지연 생성이라 Redis 전략을 실제로 고를 때만
+    // 접속한다. 기본 전략은 DB 쪽이라 Redis 없이도 서비스가 동작한다.
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+
     // Testcontainers. 테스트가 실제 PostgreSQL 컨테이너를 띄워 그 위에서 돈다. (D21)
     //
     // 나머지 테스트는 H2(MODE=PostgreSQL)를 쓴다. 빠르지만 PostgreSQL 흉내일 뿐이라
