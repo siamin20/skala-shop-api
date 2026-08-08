@@ -68,6 +68,11 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/login", "/api/auth/refresh").permitAll()
                         // 상품 조회는 비로그인 방문자도 볼 수 있어야 쇼핑몰이 성립한다.
                         .requestMatchers(HttpMethod.GET, "/api/products", "/api/products/*").permitAll()
+
+                        // 선착순 이벤트 조회는 공개다. 비로그인 방문자가 어떤 이벤트가
+                        // 열리는지 볼 수 없으면 참여할 마음이 생기지 않는다.
+                        // 참여(POST /api/flash-sales/orders)는 아래 anyRequest로 인증을 요구한다. (D23)
+                        .requestMatchers(HttpMethod.GET, "/api/flash-sales", "/api/flash-sales/*").permitAll()
                         // 문서와 헬스체크. 운영 도구가 인증 없이 접근한다.
                         .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/actuator/health", "/h2-console/**").permitAll()

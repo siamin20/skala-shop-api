@@ -28,6 +28,14 @@ spring:
     enabled: true
     locations: classpath:db/migration
 
+  data:
+    redis:
+      # REDIS 전략을 고를 때만 실제로 접속한다. 연결이 지연 생성이라
+      # Redis가 없어도 나머지 기능은 그대로 동작한다. (D23)
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: ${REDIS_TIMEOUT:2s}
+
   transaction:
     # 트랜잭션 타임아웃. 락 대기(3s)와 재시도 총합(150ms)보다 길고
     # 아래 statement_timeout(10s)보다 짧아야 한다. 순서가 뒤집히면
@@ -82,6 +90,14 @@ shop:
     # 비관적 락 대기 한도. 실제 적용은 아래 datasource의 lock_timeout이 한다.
     # 이 값은 문서와 테스트가 참조하는 기준값이다.
     lock-timeout: ${SHOP_LOCK_TIMEOUT:3s}
+
+  flash-sale:
+    # 선착순 수량을 지키는 방법. OPTIMISTIC / PESSIMISTIC / ATOMIC_UPDATE / REDIS (D23)
+    #
+    # 기본은 ATOMIC_UPDATE다. 외부 의존이 없고, 네 방식을 같은 조건에서 잰 결과
+    # 정확성과 처리량을 동시에 만족한 유일한 방식이었다.
+    # 측정 표는 docs/04-concurrency.md에 있다.
+    strategy: ${SHOP_FLASH_SALE_STRATEGY:ATOMIC_UPDATE}
 
   idempotency:
     # 키 보관 기간. 짧으면 늦은 재시도가 중복 실행되고, 길면 테이블이 커진다.
