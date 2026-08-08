@@ -115,6 +115,13 @@ dependencies {
     // 운영 DB 드라이버. 로컬에서는 infra/compose.yaml로 띄운다. (D10)
     runtimeOnly 'org.postgresql:postgresql'
 
+    // BCrypt 해싱만 필요해서 spring-boot-starter-security가 아니라 crypto 모듈만 넣는다.
+    // starter를 넣으면 자동 설정이 기본 필터 체인을 켜서 모든 엔드포인트가 잠기고,
+    // 인가 규칙을 아직 정하지 않은 P1 단계에서 기존 API가 전부 401이 된다.
+    // crypto 모듈에는 자동 설정이 없어 부작용 없이 PasswordEncoder만 쓸 수 있다.
+    // P2에서 starter-security로 확장할 때 이 의존성은 그대로 포함된다. (D5)
+    implementation 'org.springframework.security:spring-security-crypto'
+
     // Gradle이 JUnit 5 테스트를 실행할 때 필요한 런처.
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }

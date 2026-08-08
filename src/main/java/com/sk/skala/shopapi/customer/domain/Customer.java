@@ -98,6 +98,18 @@ public class Customer {
         this.point = point.plus(amount);
     }
 
+    /**
+     * 포인트를 충전한다.
+     *
+     * <p>구현은 {@link #refundPoint(Money)}와 같지만 메서드를 나눈다.
+     * 충전 코드에서 {@code refundPoint}를 부르면 읽는 사람이 "여기서 왜 환불이 일어나지"라고
+     * 멈추게 되고, 나중에 환급에만 로그나 이력이 필요해졌을 때 충전까지 함께 딸려간다.
+     * 같은 동작이라도 <b>다른 사건</b>이면 이름을 나눠 둔다.
+     */
+    public void chargePoint(Money amount) {
+        this.point = point.plus(amount);
+    }
+
     /** 이 고객이 {@code customerId}의 주인인지 확인한다. 남의 자원 접근을 막을 때 쓴다. */
     public boolean isOwner(String customerId) {
         return this.customerId.equals(customerId);
