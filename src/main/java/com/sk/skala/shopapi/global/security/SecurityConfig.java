@@ -66,6 +66,8 @@ public class SecurityConfig {
                         // 회원가입과 로그인은 인증 전에 호출되므로 열어야 한다.
                         .requestMatchers(HttpMethod.POST, "/api/customers").permitAll()
                         .requestMatchers("/api/auth/login", "/api/auth/refresh").permitAll()
+                        // 명세 536p의 로그인 경로. 인증 전에 호출되므로 열어야 한다. (D27)
+                        .requestMatchers(HttpMethod.POST, "/api/customers/login").permitAll()
                         // 상품 조회는 비로그인 방문자도 볼 수 있어야 쇼핑몰이 성립한다.
                         .requestMatchers(HttpMethod.GET, "/api/products", "/api/products/*").permitAll()
 
@@ -91,6 +93,12 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/products").hasRole(Role.ADMIN.name())
                         .requestMatchers(HttpMethod.PUT, "/api/products/*").hasRole(Role.ADMIN.name())
                         .requestMatchers(HttpMethod.DELETE, "/api/products/*").hasRole(Role.ADMIN.name())
+                        // 명세 536p 경로에는 경로 변수가 없어 위 패턴("/api/products/*")에
+                        // 걸리지 않는다. 따로 적지 않으면 anyRequest로 흘러가
+                        // 로그인한 일반 고객이 상품을 고치고 지울 수 있다. (D27)
+                        .requestMatchers(HttpMethod.PUT, "/api/products").hasRole(Role.ADMIN.name())
+                        .requestMatchers(HttpMethod.DELETE, "/api/products").hasRole(Role.ADMIN.name())
+                        .requestMatchers(HttpMethod.PUT, "/api/customers").hasRole(Role.ADMIN.name())
                         .requestMatchers(HttpMethod.GET, "/api/customers").hasRole(Role.ADMIN.name())
                         // 잔액을 임의 값으로 덮어쓰는 동작이라 본인에게도 열지 않는다. (D13)
                         .requestMatchers(HttpMethod.PUT, "/api/customers/*").hasRole(Role.ADMIN.name())
