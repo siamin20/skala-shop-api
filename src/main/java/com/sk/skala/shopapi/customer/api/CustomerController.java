@@ -2,6 +2,7 @@ package com.sk.skala.shopapi.customer.api;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -21,6 +22,8 @@ import com.sk.skala.shopapi.customer.dto.PointChargeRequest;
 import com.sk.skala.shopapi.customer.dto.PointUpdateRequest;
 import com.sk.skala.shopapi.customer.dto.SignUpRequest;
 import com.sk.skala.shopapi.global.common.PageResponse;
+import com.sk.skala.shopapi.global.security.AccessGuard;
+import com.sk.skala.shopapi.global.security.AuthenticatedCustomer;
 import com.sk.skala.shopapi.order.dto.OrderListResponse;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -50,8 +53,11 @@ import lombok.RequiredArgsConstructor;
  * <p><b>로그인은 여기에 없다.</b> 명세는 {@code POST /api/customers/login}을 두지만
  * 인증은 고객 관리와 다른 관심사다. P2에서 {@code /api/auth} 아래에 따로 만든다.
  *
- * <p>인가 규칙도 P2에서 붙는다. 지금은 목록 조회처럼 관리자만 봐야 할 엔드포인트도
- * 열려 있다. 이 PR의 범위는 기능 구현까지다.
+ * <h2>인가</h2>
+ *
+ * <p>역할 기반 규칙은 {@code SecurityConfig}에 있다. 다만 필터 체인은 경로 패턴만 보므로
+ * <b>"경로의 아이디가 요청자 본인인가"는 판단할 수 없다.</b>
+ * 그 확인은 {@link AccessGuard}로 여기서 한 번 더 한다.
  */
 @Tag(name = "고객", description = "회원가입·조회·포인트 충전·탈퇴")
 @RestController
@@ -62,6 +68,7 @@ import lombok.RequiredArgsConstructor;
 public class CustomerController {
 
     private final CustomerService customerService;
+    private final AccessGuard accessGuard;
 
     /**
      * 고객 목록을 페이지 단위로 조회한다.
@@ -85,9 +92,16 @@ public class CustomerController {
      * <p>명세의 "고객 정보 + 주문 상품 리스트 반환"에 해당한다.
      * 응답에 비밀번호는 담기지 않는다. 응답 DTO에 그 자리가 없다.
      */
-    @Operation(summary = "고객 상세 조회", description = "고객 정보와 주문한 상품 목록을 함께 반환한다.")
+    @Operation(summary = "고객 상세 조회", description = "고객 정보와 주문한 상품 목록을 함께 반환한다. 본인 또는 관리자만 조회할 수 있다.")
     @GetMapping("/{customerId}")
-    public OrderListResponse getCustomer(@PathVariable String customerId) {
+    public OrderListResponse getCustomer(
+            @AuthenticationPrincipal AuthenticatedCustomer principal,
+            @PathVariable String customerId) {
+
+        // 필터 체인은 "로그인했는가"까지만 본다. 경로의 아이디가 요청자 본인인지는
+        // 여기서 확인해야 한다. 없으면 로그인한 아무나 남의 주문 내역을 볼 수 있다.
+        accessGuard.requireSelfOrAdmin(principal, customerId);
+
         return customerService.getCustomerWithOrders(customerId);
     }
 
@@ -118,8 +132,11 @@ public class CustomerController {
     @Operation(summary = "포인트 충전", description = "보유 포인트에 금액을 더한다.")
     @PostMapping("/{customerId}/points")
     public CustomerResponse chargePoint(
+            @AuthenticationPrincipal AuthenticatedCustomer principal,
             @PathVariable String customerId,
             @Valid @RequestBody PointChargeRequest request) {
+
+        accessGuard.requireSelfOrAdmin(principal, customerId);
 
         return customerService.chargePoint(customerId, request);
     }
@@ -151,7 +168,13 @@ public class CustomerController {
     @Operation(summary = "회원 탈퇴", description = "고객과 그 주문 항목을 삭제한다.")
     @DeleteMapping("/{customerId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void deleteCustomer(@PathVariable String customerId) {
+    public void deleteCustomer(
+            @AuthenticationPrincipal AuthenticatedCustomer principal,
+            @PathVariable String customerId) {
+
+        // 이 검사가 없으면 로그인한 아무나 남의 계정을 삭제할 수 있다.
+        accessGuard.requireSelfOrAdmin(principal, customerId);
+
         customerService.deleteCustomer(customerId);
     }
 }

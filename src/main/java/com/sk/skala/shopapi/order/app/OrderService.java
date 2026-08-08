@@ -51,6 +51,20 @@ public class OrderService {
     private final OrderItemRepository orderItemRepository;
 
     /**
+     * 고객의 주문 목록을 조회한다.
+     *
+     * <p>{@code CustomerService.getCustomerWithOrders}와 결과가 같다. 합치지 않은 이유는
+     * 의존 방향 때문이다. 이 메서드를 고객 쪽에 두면 주문 컨트롤러가 고객 서비스를 불러야 하고,
+     * 반대로 고객 쪽에서 이 메서드를 부르면 {@code customer → order} 의존이 생겨 순환이 된다.
+     * 세 줄짜리 조회라 각자 두는 편이 낫다.
+     *
+     * @throws BusinessException 고객이 없으면 {@link ErrorCode#DATA_NOT_FOUND}
+     */
+    public OrderListResponse getOrders(String customerId) {
+        return currentOrders(findCustomerOrThrow(customerId));
+    }
+
+    /**
      * 상품을 주문한다.
      *
      * <p>처리 순서는 명세와 같다. 고객·상품 조회 → 포인트 검증·차감 → 주문 항목 반영.
