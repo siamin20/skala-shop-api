@@ -1,5 +1,7 @@
 package com.sk.skala.shopapi.order.app;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
@@ -120,22 +122,22 @@ public class CheckoutService {
                 ? new CardPaymentGateway.Approval(null, null)
                 : cardPaymentGateway.authorize(request.card(), cardAmount, orderId);
 
+        // 적립금을 항목별로 어떻게 나눌지 여기서 한 번만 정한다. (D46)
+        // 주문 반영·적립 지급·원장 기록이 모두 이 결과를 쓴다.
+        List<Money> itemTotals = itemTotals(request);
+        List<Money> portions = splitPoint(itemTotals, usePoint, total);
+        Money earned = totalReward(itemTotals, portions);
+
         // ── 3. 재고·포인트·주문 (트랜잭션 안) ──
         try {
-            OrderListResponse orders = applyOrder(customerId, request, usePoint, cardAmount);
-            Money earned = rewardPolicy.rewardFor(cardAmount);
+            OrderListResponse orders = applyOrder(customerId, request, portions, earned);
 
-            java.util.List<com.sk.skala.shopapi.order.ledger.OrderLedger.Line> lines =
-                    new java.util.ArrayList<>();
-            for (CheckoutRequest.Item item : request.items()) {
+            List<com.sk.skala.shopapi.order.ledger.OrderLedger.Line> lines = new ArrayList<>();
+            for (int i = 0; i < request.items().size(); i++) {
+                CheckoutRequest.Item item = request.items().get(i);
                 Product p = productRepository.findById(item.productId()).orElseThrow();
-                Money lineTotal = p.totalPriceOf(item.quantity());
-                // 적립금 사용액을 항목 비중대로 나눈다. 취소할 때 낸 만큼 돌려주려면 필요하다.
-                Money linePoint = total.isZero()
-                        ? Money.ZERO
-                        : usePoint.proportion((int) lineTotal.getAmount(), (int) total.getAmount());
                 lines.add(new com.sk.skala.shopapi.order.ledger.OrderLedger.Line(
-                        p, item.quantity(), lineTotal, linePoint));
+                        p, item.quantity(), itemTotals.get(i), portions.get(i)));
             }
 
             orderLedger.record(customer(customerId), lines, usePoint, cardAmount, earned,
@@ -154,6 +156,78 @@ public class CheckoutService {
         }
     }
 
+
+    /**
+     * 적립금 사용액을 항목별로 나눈다. <b>이 계산은 여기 한 곳에만 있다.</b> (D46)
+     *
+     * <p>예전에는 같은 분배를 세 곳에서 따로 계산했다. 주문 반영(order_item), 적립 지급,
+     * 원장 기록(order_line)이다. 세 곳이 조금씩 다른 식을 쓰고 있었고,
+     * 그래서 <b>같은 주문에 대해 서로 다른 값이 저장됐다.</b>
+     *
+     * <p>고쳐야 할 것은 각 계산식이 아니라 <b>계산이 세 군데 있다는 사실</b>이었다.
+     *
+     * <h2>나누는 방식</h2>
+     *
+     * <p>금액 비중대로 나누고, <b>마지막 항목이 나머지를 가져간다.</b>
+     * 내림으로 생긴 잔돈이 마지막에서 정산되므로 합계가 원래 금액과 정확히 같다.
+     * 금액에서 1원이 사라지는 것은 작은 오차가 아니라 원장이 맞지 않는 것이다. (D1)
+     *
+     * <p>{@code usePoint}는 주문 총액을 넘지 않으므로({@link #resolveUsePoint}),
+     * 어떤 항목도 자기 금액보다 큰 몫을 받지 않는다.
+     *
+     * @return 요청 항목과 같은 순서의 배정액
+     */
+    private List<Money> splitPoint(List<Money> itemTotals, Money usePoint, Money orderTotal) {
+        List<Money> portions = new ArrayList<>(itemTotals.size());
+        Money remaining = usePoint;
+
+        for (int i = 0; i < itemTotals.size(); i++) {
+            boolean last = (i == itemTotals.size() - 1);
+            Money itemTotal = itemTotals.get(i);
+
+            Money portion = last || orderTotal.isZero()
+                    ? remaining
+                    : usePoint.proportion((int) itemTotal.getAmount(), (int) orderTotal.getAmount());
+
+            // 성질이 깨지면 조용히 틀리는 대신 여기서 드러나야 한다.
+            if (itemTotal.isLessThan(portion)) {
+                throw new IllegalStateException(
+                        "항목에 배정된 적립금이 항목 금액을 넘습니다: %s > %s".formatted(portion, itemTotal));
+            }
+
+            portions.add(portion);
+            remaining = remaining.minus(portion);
+        }
+        return portions;
+    }
+
+    /** 요청 항목의 금액을 순서대로 구한다. */
+    private List<Money> itemTotals(CheckoutRequest request) {
+        List<Money> totals = new ArrayList<>(request.items().size());
+        for (CheckoutRequest.Item item : request.items()) {
+            totals.add(productRepository.findById(item.productId())
+                    .orElseThrow(() -> new BusinessException(
+                            ErrorCode.DATA_NOT_FOUND, "상품을 찾을 수 없습니다: " + item.productId()))
+                    .totalPriceOf(item.quantity()));
+        }
+        return totals;
+    }
+
+    /**
+     * 적립액. 항목별로 계산해 더한다. (D46)
+     *
+     * <p>주문 단위로 한 번에 적립하면 취소할 때 어긋난다. 취소는 항목 단위라
+     * 회수액이 <b>항목별 내림의 합</b>이 되는데, 지급액은 <b>합계의 내림</b>이라
+     * 둘이 최대 항목 수만큼 차이 난다. 실제로 전부 취소했을 때 1P가 남았다.
+     */
+    private Money totalReward(List<Money> itemTotals, List<Money> portions) {
+        Money earned = Money.ZERO;
+        for (int i = 0; i < itemTotals.size(); i++) {
+            earned = earned.plus(rewardPolicy.rewardFor(itemTotals.get(i).minus(portions.get(i))));
+        }
+        return earned;
+    }
+
     /**
      * 재고 차감·포인트 사용·적립·주문 기록을 한 트랜잭션에서 처리한다.
      *
@@ -161,35 +235,18 @@ public class CheckoutService {
      */
     @Transactional
     protected OrderListResponse applyOrder(String customerId, CheckoutRequest request,
-            Money usePoint, Money cardAmount) {
+            List<Money> portions, Money earned) {
 
-        // 적립금 사용액을 항목별로 나눈다. 첫 항목에 몰아주면 그 항목만 취소했을 때
-        // 적립금이 전부 돌아오고 나머지는 카드 환불이 된다. 비율대로 나눠야
-        // 어느 항목을 취소하든 낸 만큼 돌아간다.
+        // 분배는 이미 정해져 있다(splitPoint). 여기서는 그대로 반영만 한다.
+        // 예전에는 이 메서드가 직접 나눴고, 그 식이 원장·적립과 달라 값이 어긋났다. (D46)
         OrderListResponse orders = null;
-        Money remaining = usePoint;
-        int index = 0;
 
-        for (CheckoutRequest.Item item : request.items()) {
-            boolean last = (++index == request.items().size());
-            Product product = productRepository.findById(item.productId()).orElseThrow();
-            Money itemTotal = product.totalPriceOf(item.quantity());
-
-            // 마지막 항목이 나머지를 모두 가져간다. 비례 배분에서 내림으로 생긴
-            // 잔돈이 여기서 정산되어 합계가 정확히 맞는다. (D1의 방식과 같다)
-            Money portion = last ? remaining : usePoint.proportion(1, request.items().size());
-            if (portion.isLessThan(itemTotal) || portion.equals(itemTotal)) {
-                remaining = remaining.minus(portion);
-            } else {
-                portion = itemTotal;
-                remaining = remaining.minus(portion);
-            }
-
-            orders = orderService.placeOrderWithPayment(customerId, item.toOrderRequest(), portion);
+        for (int i = 0; i < request.items().size(); i++) {
+            orders = orderService.placeOrderWithPayment(
+                    customerId, request.items().get(i).toOrderRequest(), portions.get(i));
         }
 
-        // 적립은 실제로 낸 금액(카드분) 기준이다. 포인트로 낸 부분에는 적립하지 않는다.
-        Money earned = rewardPolicy.rewardFor(cardAmount);
+        // 적립은 실제로 낸 금액(카드분)에만 붙는다. 포인트로 낸 부분에는 적립하지 않는다.
         if (!earned.isZero()) {
             Customer customer = customerRepository.findById(customerId).orElseThrow();
             customer.chargePoint(earned);
