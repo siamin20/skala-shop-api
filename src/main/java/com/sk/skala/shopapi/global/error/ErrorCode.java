@@ -44,6 +44,15 @@ public enum ErrorCode {
     /** 상품명이나 고객 ID가 이미 있다. */
     DATA_DUPLICATED(HttpStatus.CONFLICT, "이미 존재하는 데이터입니다"),
 
+    /**
+     * 다른 데이터가 참조하고 있어 삭제할 수 없다.
+     *
+     * <p>주문 내역이 있는 상품이 대표적이다. 그냥 지우면 주문 기록이 어떤 상품이었는지 잃는다.
+     * {@link #DATA_DUPLICATED}와 구분하는 이유는, 둘 다 409지만 사용자가 할 일이 정반대이기 때문이다.
+     * 중복은 다른 값을 쓰면 되지만 참조는 참조하는 쪽을 먼저 정리해야 한다.
+     */
+    DATA_IN_USE(HttpStatus.CONFLICT, "다른 데이터가 참조하고 있어 삭제할 수 없습니다"),
+
     /** 보유 포인트가 주문 금액보다 적다. */
     INSUFFICIENT_POINT(HttpStatus.CONFLICT, "포인트가 부족합니다"),
 

@@ -122,6 +122,52 @@ public class Money implements Comparable<Money> {
         }
     }
 
+    /**
+     * 전체 수량 중 일부에 해당하는 금액을 구한다. 나누어떨어지지 않으면 <b>내림</b>한다.
+     *
+     * <p>부분 취소 환급액을 계산할 때 쓴다. 내림하는 이유는 환급 합계가 원래 결제 금액을
+     * 넘지 않게 하기 위해서다. 내림으로 남은 잔돈은 마지막 전량 취소에서 한 번에 정산된다.
+     * 올림하면 여러 번 나눠 취소할수록 결제액보다 많이 돌려주게 된다.
+     *
+     * @param part  구할 부분의 수량
+     * @param whole 전체 수량
+     * @throws IllegalArgumentException 수량이 잘못됐거나 계산 결과가 범위를 넘는 경우
+     */
+    public Money proportion(int part, int whole) {
+        if (whole <= 0) {
+            throw new IllegalArgumentException("전체 수량은 1 이상이어야 합니다: " + whole);
+        }
+        if (part < 0 || part > whole) {
+            throw new IllegalArgumentException("부분 수량이 범위를 벗어났습니다: %d / %d".formatted(part, whole));
+        }
+        // amount × part를 먼저 계산하면 결과는 범위 안인데 중간값만 넘쳐서 정상 요청이 거부된다.
+        // 몫과 나머지로 나눠 계산하면 중간값이 커지지 않으면서 결과는 동일하다.
+        //
+        //   amount × part / whole
+        // = (q × whole + r) × part / whole        (q = amount/whole, r = amount%whole)
+        // = q × part + (r × part) / whole
+        //
+        // 두 항 모두 안전하다. part ≤ whole 이므로 q × part ≤ amount 이고,
+        // r < whole ≤ Integer.MAX_VALUE 이므로 r × part < whole² < Long.MAX_VALUE 이다.
+        long quotient = this.amount / whole;
+        long remainder = this.amount % whole;
+        return new Money(quotient * part + (remainder * part) / whole);
+    }
+
+    /**
+     * 금액을 수량으로 나눈 값. 나누어떨어지지 않으면 내림한다.
+     *
+     * <p>누적 총액에서 평균 단가를 구해 <b>보여주기 위한</b> 용도다.
+     * 실제 환급 계산에는 {@link #proportion(int, int)}를 쓴다.
+     * 내림된 단가에 수량을 곱하면 원래 총액과 어긋나기 때문이다.
+     */
+    public Money dividedBy(int divisor) {
+        if (divisor <= 0) {
+            throw new IllegalArgumentException("나누는 수는 1 이상이어야 합니다: " + divisor);
+        }
+        return new Money(this.amount / divisor);
+    }
+
     /** 이 금액이 {@code other}보다 적으면 true. 잔액 부족 판단에 쓴다. */
     public boolean isLessThan(Money other) {
         return this.amount < other.amount;
