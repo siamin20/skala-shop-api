@@ -30,7 +30,7 @@ services:
       DATABASE_URL: jdbc:postgresql://postgres:5432/skalashop
       DATABASE_USERNAME: skalashop
       DATABASE_PASSWORD: skalashop
-      REDIS_HOST: redis
+      SHOP_REDIS_HOST: redis
 
       # 기본값을 쓰지 않는다. application.yml의 기본 시크릿은 저장소에 공개돼 있어
       # 그대로 두면 누구나 토큰을 위조할 수 있다.

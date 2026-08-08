@@ -32,9 +32,17 @@ spring:
     redis:
       # REDIS 전략을 고를 때만 실제로 접속한다. 연결이 지연 생성이라
       # Redis가 없어도 나머지 기능은 그대로 동작한다. (D23)
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
-      timeout: ${REDIS_TIMEOUT:2s}
+      # 변수 이름에 SHOP_ 접두사를 붙인다.
+      #
+      # 쿠버네티스는 같은 네임스페이스의 서비스마다 <서비스이름>_PORT 형식의 환경변수를
+      # 주입한다. redis라는 서비스가 있으면 REDIS_PORT가 생기고, 그 값은 포트 번호가 아니라
+      # "tcp://10.96.208.253:6379"다. 우리가 REDIS_PORT를 쓰고 있었기 때문에 덮어써졌다.
+      #
+      # 파드 쪽에서 enableServiceLinks: false로 주입 자체를 껐지만(04-app.yaml),
+      # 이름도 함께 바꿔 둔다. 설정 하나에 기대는 것보다 이름이 겹치지 않는 편이 낫다.
+      host: ${SHOP_REDIS_HOST:localhost}
+      port: ${SHOP_REDIS_PORT:6379}
+      timeout: ${SHOP_REDIS_TIMEOUT:2s}
 
   transaction:
     # 트랜잭션 타임아웃. 락 대기(3s)와 재시도 총합(150ms)보다 길고

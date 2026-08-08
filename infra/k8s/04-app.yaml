@@ -48,6 +48,23 @@ spec:
       labels:
         app: shop-api
     spec:
+      # 쿠버네티스가 넣어주는 레거시 환경변수를 끈다.
+      #
+      # 켜져 있으면 같은 네임스페이스의 서비스마다 도커 링크 시절 형식의 변수를 주입한다.
+      #   redis 서비스 → REDIS_PORT=tcp://10.96.208.253:6379
+      #                  REDIS_SERVICE_HOST, REDIS_SERVICE_PORT ...
+      #
+      # 우리 설정도 REDIS_PORT라는 이름을 쓰고 있어서, 주입된 값이 그것을 덮었다.
+      # 애플리케이션은 포트 자리에 "tcp://10.96.208.253:6379"를 받고 기동에 실패했다.
+      #
+      #   Failed to bind properties under 'spring.data.redis.port' to int
+      #
+      # 이름을 바꿔 피할 수도 있지만(그것도 함께 했다), 원인 자체를 없애는 편이 낫다.
+      # 이 변수들은 아무도 쓰지 않는다. 서비스는 DNS 이름으로 찾는다.
+      #
+      # compose에서는 이 문제가 재현되지 않는다. 실제 클러스터에 올려보고 알았다.
+      enableServiceLinks: false
+
       containers:
         - name: shop-api
           image: shop-api:1.0
@@ -122,6 +139,12 @@ spec:
             # 이미지에서 비루트로 만들었지만 여기서 한 번 더 강제한다.
             # 이미지가 바뀌어도 이 선언은 남아 root 실행을 막는다.
             runAsNonRoot: true
+
+            # UID를 여기에도 적는다. runAsNonRoot만 두면 쿠버네티스가
+            # 이미지의 USER가 정말 비루트인지 확인할 방법이 없어 파드가 뜨지 않는다.
+            # 이미지의 USER 10001과 같은 값이어야 한다.
+            runAsUser: 10001
+            runAsGroup: 10001
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities:
