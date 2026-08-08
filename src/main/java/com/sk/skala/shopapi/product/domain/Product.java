@@ -1,6 +1,8 @@
 package com.sk.skala.shopapi.product.domain;
 
 import com.sk.skala.shopapi.global.common.Money;
+import com.sk.skala.shopapi.global.error.BusinessException;
+import com.sk.skala.shopapi.global.error.ErrorCode;
 
 import jakarta.persistence.AttributeOverride;
 import jakarta.persistence.Column;
@@ -60,6 +62,20 @@ public class Product {
     private Money price;
 
     /**
+     * 남은 재고 수량. (D22)
+     *
+     * <p>명세에는 없는 필드다. 재고가 없으면 <b>여러 사용자가 같은 행을 다투는 상황</b>
+     * 자체가 만들어지지 않는다. 포인트는 본인만 바꾸므로 남과 경합할 일이 없기 때문이다.
+     * 락 전략을 비교하려면 경합하는 자원이 하나는 필요하다. (D8)
+     *
+     * <p>이 필드는 <b>비관적 락</b>으로 보호한다. 인기 상품 한 행에 요청이 몰리는
+     * hot row가 되기 때문이다. 낙관적 락을 쓰면 충돌이 잦아 재시도가 대부분 또 실패한다.
+     * 판단 근거는 {@code docs/04-concurrency.md}에 있다.
+     */
+    @Column(name = "product_stock", nullable = false)
+    private int stock;
+
+    /**
      * 새 상품을 만든다.
      *
      * <p>필수값 검사를 생성자에서 하는 이유는, 이 검사를 통과하지 못한 {@code Product}가
@@ -70,10 +86,19 @@ public class Product {
      * @param price 판매 가격. 0원일 수 없다
      * @throws IllegalArgumentException 상품명이 비었거나 가격이 0원인 경우
      */
-    public Product(String name, Money price) {
+    /**
+     * 상품을 만든다.
+     *
+     * <p>재고를 생략할 수 있는 생성자를 두지 않았다. 두면 재고를 깜빡한 상품이
+     * <b>등록하자마자 품절 상태</b>로 조용히 생긴다. 필요한 값을 명시하게 강제하는 편이
+     * 호출부를 조금 번거롭게 하더라도 안전하다.
+     */
+    public Product(String name, Money price, int stock) {
         validatePrice(price);
+        validateStock(stock);
         this.name = normalizeName(name);
         this.price = price;
+        this.stock = stock;
     }
 
     /**
@@ -104,6 +129,36 @@ public class Product {
     }
 
     /**
+     * 재고를 차감한다.
+     *
+     * <p>재고 검사를 이 메서드 안에서 하는 이유는 D2의 원칙과 같다. 검사를 호출하는 쪽에
+     * 맡기면 검사를 빠뜨린 경로가 하나만 생겨도 재고가 음수가 된다.
+     *
+     * <p><b>이 메서드만으로는 동시성 안전이 보장되지 않는다.</b> 두 트랜잭션이 같은 값을
+     * 읽으면 둘 다 검사를 통과한다. 호출하기 전에 비관적 락으로 행을 잡아야 하며,
+     * 그 책임은 {@code OrderService}에 있다. DB의 CHECK 제약이 마지막 방어선이다.
+     *
+     * @throws BusinessException 재고가 부족하면 {@code OUT_OF_STOCK}
+     */
+    public void deductStock(int quantity) {
+        if (quantity > this.stock) {
+            throw new BusinessException(ErrorCode.OUT_OF_STOCK,
+                    "%s의 재고가 부족합니다. 남은 수량: %d".formatted(name, stock));
+        }
+        this.stock -= quantity;
+    }
+
+    /**
+     * 주문 취소로 재고를 되돌린다.
+     *
+     * <p>차감과 달리 상한을 검사하지 않는다. 되돌리는 수량이 맞는지는 주문 항목이
+     * 알고 있고, 여기서 다시 검사하려면 원래 재고를 알아야 하는데 그 정보가 없다.
+     */
+    public void restoreStock(int quantity) {
+        this.stock += quantity;
+    }
+
+    /**
      * 상품명을 검증하고 앞뒤 공백을 제거한다.
      *
      * <p>{@code public static}인 이유는 <b>중복 검사도 같은 규칙으로 비교해야</b> 하기 때문이다.
@@ -120,6 +175,12 @@ public class Product {
             throw new IllegalArgumentException("상품명은 비어 있을 수 없습니다");
         }
         return name.trim();
+    }
+
+    private void validateStock(int stock) {
+        if (stock < 0) {
+            throw new IllegalArgumentException("재고는 음수일 수 없습니다");
+        }
     }
 
     private void validatePrice(Money price) {
