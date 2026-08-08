@@ -1,6 +1,7 @@
 package com.sk.skala.shopapi.global.config;
 
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -44,18 +45,33 @@ public class AdminAccountInitializer {
                 return;
             }
 
+            // 로그에 관리자 아이디를 남기지 않는다.
+            //
+            // 로그는 수집 시스템으로 흘러가 애플리케이션보다 접근 범위가 넓다.
+            // 관리자 아이디가 노출되면 공격자가 대상 계정을 특정할 수 있다.
+            // 생성 여부만 알면 운영에 충분하다.
             if (customerRepository.existsById(adminProperties.id())) {
-                log.info("관리자 계정이 이미 있습니다: {}", adminProperties.id());
+                log.info("관리자 계정이 이미 있습니다.");
                 return;
             }
 
-            customerRepository.save(new Customer(
-                    adminProperties.id(),
-                    passwordEncoder.encode(adminProperties.password()),
-                    Money.ZERO,     // 관리자는 주문하지 않으므로 포인트가 필요 없다
-                    Role.ADMIN));
+            try {
+                customerRepository.save(new Customer(
+                        adminProperties.id(),
+                        passwordEncoder.encode(adminProperties.password()),
+                        Money.ZERO,     // 관리자는 주문하지 않으므로 포인트가 필요 없다
+                        Role.ADMIN));
 
-            log.info("관리자 계정을 생성했습니다: {}", adminProperties.id());
+                log.info("관리자 계정을 생성했습니다.");
+
+            } catch (DataIntegrityViolationException e) {
+                // 위의 존재 확인과 여기 저장 사이에 다른 인스턴스가 먼저 만든 경우다.
+                // 인스턴스를 두 개 이상 띄우면 실제로 일어난다. (K8s replicas: 2)
+                //
+                // ApplicationRunner에서 예외가 나가면 그 인스턴스는 기동에 실패한다.
+                // 원하던 상태(관리자 계정이 존재함)는 이미 이뤄졌으므로 실패시킬 이유가 없다.
+                log.info("관리자 계정이 이미 있습니다. 다른 인스턴스가 먼저 생성했습니다.");
+            }
         };
     }
 }
