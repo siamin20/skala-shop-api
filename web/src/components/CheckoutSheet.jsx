@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 const won = (n) => n.toLocaleString('ko-KR')
 
@@ -23,6 +23,19 @@ export default function CheckoutSheet({ open, items, point, address, busy, onClo
   const [method, setMethod] = useState('CARD')
   const [usePoint, setUsePoint] = useState(0)
   const [card, setCard] = useState({ cardNumber: '', expiry: '', cvc: '' })
+
+  /**
+   * 주소 검색을 쓸 수 없을 때 직접 입력으로 전환한다.
+   *
+   * <p>외부 스크립트라 사내망이나 오프라인에서는 받아오지 못한다.
+   * 그때 칸이 읽기 전용으로 잠겨 있으면 <b>주문 자체를 할 수 없다.</b>
+   * 검색이 안 되는 것과 주문을 못 하는 것은 다른 문제다.
+   */
+  const [manualAddress, setManualAddress] = useState(false)
+
+  /** 주소 검색을 끼워 넣을 자리. 팝업 대신 이 안에 그린다. */
+  const [searching, setSearching] = useState(false)
+  const postcodeBox = useRef(null)
 
   // 저장된 배송지가 있으면 채워 넣는다. 매번 다시 치게 하지 않는다.
   useEffect(() => {
@@ -54,30 +67,64 @@ export default function CheckoutSheet({ open, items, point, address, busy, onClo
 
   const set = (field) => (e) => setForm({ ...form, [field]: e.target.value })
 
-  /** 다음 우편번호 창을 띄운다. 스크립트는 이 시점에 처음 불러온다. */
+  /**
+   * 다음 우편번호 창을 띄운다.
+   *
+   * <p>스크립트를 미리 불러오지 않고 <b>버튼을 누를 때</b> 넣는다. 주문서를 열 때마다
+   * 외부 스크립트를 받으면 첫 화면이 그만큼 늦어진다.
+   *
+   * <p>프로토콜을 생략한 {@code //} 형태를 쓰지 않는다. 일부 환경에서 http로 내려받으려다
+   * 혼합 콘텐츠로 차단된다. https로 못 박는다.
+   *
+   * <p>팝업({@code open})이 아니라 <b>주문서 안에 끼워 넣는다</b>({@code embed}).
+   * 팝업은 브라우저나 확장 프로그램이 막으면 아무 일도 일어나지 않고,
+   * 사용자는 버튼이 고장 난 것으로 본다. 실제로 이 환경에서 그렇게 막혔다.
+   * 끼워 넣으면 차단 설정과 무관하게 동작하고 화면 이동도 없다.
+   */
   function searchAddress() {
     const openPostcode = () => {
-      new window.daum.Postcode({
-        oncomplete: (data) => {
-          setForm((f) => ({
-            ...f,
-            zipcode: data.zonecode,
-            // 도로명이 없는 지역이 있어 지번으로 넘어간다.
-            address: data.roadAddress || data.jibunAddress,
-          }))
-        },
-      }).open()
+      setSearching(true)
+
+      // 상태가 반영되어 자리가 생긴 뒤에 그려야 한다.
+      // 같은 틱에 부르면 ref가 아직 null이다.
+      setTimeout(() => {
+        if (!postcodeBox.current) {
+          setManualAddress(true)
+          setSearching(false)
+          return
+        }
+        try {
+          new window.daum.Postcode({
+            oncomplete: (data) => {
+              setForm((f) => ({
+                ...f,
+                zipcode: data.zonecode,
+                // 도로명이 없는 지역이 있어 지번으로 넘어간다.
+                address: data.roadAddress || data.jibunAddress,
+              }))
+              setSearching(false)
+            },
+            onclose: () => setSearching(false),
+            width: '100%',
+            height: '100%',
+          }).embed(postcodeBox.current)
+        } catch {
+          setManualAddress(true)
+          setSearching(false)
+        }
+      }, 0)
     }
 
     if (window.daum?.Postcode) {
       openPostcode()
       return
     }
+
     const script = document.createElement('script')
-    script.src = '//t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js'
+    script.src = 'https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js'
     script.onload = openPostcode
-    // 스크립트를 못 받으면 직접 입력으로 넘어간다. 검색이 안 된다고 주문을 막을 이유가 없다.
-    script.onerror = () => alert('주소 검색을 불러오지 못했습니다. 직접 입력해 주세요.')
+    // 받아오지 못하면 직접 입력으로 연다. 검색이 안 된다고 주문을 막을 이유가 없다.
+    script.onerror = () => setManualAddress(true)
     document.body.appendChild(script)
   }
 
@@ -109,10 +156,35 @@ export default function CheckoutSheet({ open, items, point, address, busy, onClo
               <input placeholder="받는 분" value={form.recipient} onChange={set('recipient')} />
               <input placeholder="연락처 (01012345678)" value={form.phone} onChange={set('phone')} />
               <div className="zip-row">
-                <input placeholder="우편번호" value={form.zipcode} readOnly />
-                <button className="line tiny" onClick={searchAddress}>주소 검색</button>
+                <input
+                  placeholder="우편번호"
+                  value={form.zipcode}
+                  readOnly={!manualAddress}
+                  onChange={set('zipcode')}
+                />
+                <button type="button" className="line tiny" onClick={searchAddress}>
+                  주소 검색
+                </button>
               </div>
-              <input placeholder="주소" value={form.address} readOnly />
+              <input
+                placeholder="주소"
+                value={form.address}
+                readOnly={!manualAddress}
+                onChange={set('address')}
+              />
+              {searching && (
+                <div className="postcode-box">
+                  <div ref={postcodeBox} className="postcode-frame" />
+                  <button type="button" className="line tiny" onClick={() => setSearching(false)}>
+                    검색 닫기
+                  </button>
+                </div>
+              )}
+              {manualAddress && (
+                <p className="muted small">
+                  주소 검색을 불러오지 못했습니다. 직접 입력해 주세요.
+                </p>
+              )}
               <input placeholder="상세 주소 (동·호수)" value={form.addressDetail}
                      onChange={set('addressDetail')} />
             </div>
@@ -149,7 +221,7 @@ export default function CheckoutSheet({ open, items, point, address, busy, onClo
                 {cardAmount > 0 && (
                   <div className="form-grid" style={{ marginTop: 12 }}>
                     <input
-                      placeholder="카드번호 (4242424242424242)"
+                      placeholder="카드번호"
                       value={card.cardNumber}
                       onChange={(e) => setCard({ ...card, cardNumber: e.target.value.replace(/\D/g, '') })}
                       inputMode="numeric"
@@ -160,9 +232,6 @@ export default function CheckoutSheet({ open, items, point, address, busy, onClo
                       <input placeholder="CVC" value={card.cvc} inputMode="numeric"
                              onChange={(e) => setCard({ ...card, cvc: e.target.value.replace(/\D/g, '') })} />
                     </div>
-                    <p className="muted small">
-                      테스트 카드 · 승인 4242424242424242 / 한도초과 4000000000000002
-                    </p>
                   </div>
                 )}
               </>

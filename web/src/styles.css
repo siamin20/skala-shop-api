@@ -456,3 +456,8 @@ input.invalid { border-color: var(--sale); }
 }
 .main-nav button.on { color: var(--text); border-bottom-color: var(--ink); }
 .topbar-title { padding-top: 12px; }
+
+/* ── 주소 검색: 팝업 대신 주문서 안에 끼워 넣는다 ── */
+.postcode-box { border: 1px solid var(--line-dark); border-radius: 8px; overflow: hidden; }
+.postcode-frame { width: 100%; height: 400px; }
+.postcode-box > button { width: 100%; border: 0; border-top: 1px solid var(--line); border-radius: 0; }
