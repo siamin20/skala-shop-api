@@ -1,0 +1,50 @@
+name: 결함
+description: 잘못 동작하는 것을 등록합니다.
+title: "[Bug] "
+labels: ["🐛bug🐛"]
+body:
+  - type: textarea
+    id: observed
+    attributes:
+      label: 무슨 일이 일어났나
+      placeholder: |
+        docker run으로 단독 실행했는데 모든 API는 정상인데
+        /actuator/health만 DOWN을 반환한다.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 무엇을 기대했나
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 재현 방법
+      description: 재현되지 않으면 고쳤는지 확인할 수 없습니다.
+      placeholder: |
+        1. docker build -t shop-api:1.0 .
+        2. docker run -p 8080:8080 shop-api:1.0
+        3. curl localhost:8080/actuator/health
+    validations:
+      required: true
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: 영향
+      description: 무엇이 망가지는지. 심각도 판단의 근거가 됩니다.
+      placeholder: 이 경로에 쿠버네티스 probe를 걸면 파드가 영원히 Ready가 되지 않는다.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: test
+    attributes:
+      label: 재현 테스트
+      options:
+        - label: 고치기 전에 실패하는 테스트를 먼저 작성한다
+          required: true
