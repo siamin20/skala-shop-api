@@ -100,6 +100,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.DELETE, "/api/products").hasRole(Role.ADMIN.name())
                         .requestMatchers(HttpMethod.PUT, "/api/customers").hasRole(Role.ADMIN.name())
                         .requestMatchers(HttpMethod.GET, "/api/customers").hasRole(Role.ADMIN.name())
+                        // 메트릭은 관리자만 본다. 열어두면 엔드포인트 목록과 호출 빈도가
+                        // 그대로 드러나 공격 대상을 고르는 단서가 된다. (D28)
+                        // health와 info는 위에서 열어둔다. probe가 인증 없이 호출하기 때문이다.
+                        .requestMatchers("/actuator/**").hasRole(Role.ADMIN.name())
                         // 잔액을 임의 값으로 덮어쓰는 동작이라 본인에게도 열지 않는다. (D13)
                         .requestMatchers(HttpMethod.PUT, "/api/customers/*").hasRole(Role.ADMIN.name())
 

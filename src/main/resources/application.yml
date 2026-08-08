@@ -117,8 +117,8 @@ management:
       exposure:
         # 필요한 것만 연다. 기본값은 health와 info뿐이지만 명시해둔다.
         # env나 configprops를 열면 JWT 시크릿과 DB 비밀번호가 그대로 노출된다.
-        # 메트릭·프로메테우스 노출은 관측 파이프라인과 함께 P5에서 다룬다.
-        include: health,info
+        # metrics와 prometheus를 열어 수집기가 긁어갈 수 있게 한다. (D28)
+        include: health,info,metrics,prometheus
   endpoint:
     health:
       # liveness와 readiness를 나눈다. 이게 없으면 /actuator/health 하나뿐이라
@@ -158,6 +158,21 @@ management:
       # 쓰지 않는 선택적 의존성이 앱 전체를 죽은 것으로 보이게 하면 안 된다.
       # REDIS 전략을 쓸 때는 MANAGEMENT_HEALTH_REDIS_ENABLED=true로 켠다.
       enabled: ${MANAGEMENT_HEALTH_REDIS_ENABLED:false}
+
+  metrics:
+    tags:
+      # 모든 메트릭에 애플리케이션 이름을 붙인다. 여러 서비스의 메트릭이
+      # 한 저장소로 모이면 이 태그가 없어 구분하지 못하는 일이 흔하다.
+      application: skala-shop-api
+    distribution:
+      percentiles-histogram:
+        # 평균만 보면 느린 요청이 묻힌다. 요청 100건 중 99건이 10ms이고
+        # 1건이 3초여도 평균은 40ms다. 백분위를 봐야 그 1건이 보인다.
+        http.server.requests: true
+        shop.api.duration: true
+      percentiles:
+        http.server.requests: 0.5, 0.95, 0.99
+        shop.api.duration: 0.5, 0.95, 0.99
 
 springdoc:
   swagger-ui:
@@ -201,6 +216,11 @@ spring:
         show_sql: true
 
 logging:
+  pattern:
+    # traceId를 로그 패턴에 넣는다. MDC에 담긴 값을 %X{}로 꺼낸다.
+    # 없으면(스케줄러, 기동 로그) 하이픈이 찍혀 자리가 비지 않는다. (D28)
+    console: "%d{HH:mm:ss.SSS} %-5level [%X{traceId:--------}] %logger{36} - %msg%n"
+
   level:
     # 바인딩되는 파라미터 값까지 보여준다. 쿼리를 눈으로 확인하며 공부하기 위한 설정이다.
     org.hibernate.orm.jdbc.bind: trace
