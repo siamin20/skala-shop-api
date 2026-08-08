@@ -115,6 +115,15 @@ dependencies {
     // 운영 DB 드라이버. 로컬에서는 infra/compose.yaml로 띄운다. (D10)
     runtimeOnly 'org.postgresql:postgresql'
 
+    // 스키마 마이그레이션. (D16)
+    // 교재 9p가 "운영에서는 ddl-auto를 validate/none으로" 두라고 하는데,
+    // validate는 테이블이 이미 있어야 통과하므로 스키마를 만들 수단이 따로 필요하다.
+    // 교재는 그 수단을 다루지 않아 빈칸으로 남아 있었다.
+    //
+    // Flyway 10부터 DB별 지원이 모듈로 분리되어 PostgreSQL 모듈을 따로 넣는다.
+    implementation 'org.flywaydb:flyway-core'
+    runtimeOnly 'org.flywaydb:flyway-database-postgresql'
+
     // BCrypt 해싱만 필요해서 spring-boot-starter-security가 아니라 crypto 모듈만 넣는다.
     // starter를 넣으면 자동 설정이 기본 필터 체인을 켜서 모든 엔드포인트가 잠기고,
     // 인가 규칙을 아직 정하지 않은 P1 단계에서 기존 API가 전부 401이 된다.
