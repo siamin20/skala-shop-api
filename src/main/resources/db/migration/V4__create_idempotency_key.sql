@@ -18,7 +18,22 @@ CREATE TABLE idempotency_key (
     request_fingerprint  VARCHAR(64)  NOT NULL,
 
     -- 최초 처리 결과. 재시도에는 이 값을 그대로 돌려주고 작업은 실행하지 않는다.
-    response_body        CLOB         NOT NULL,
+    --
+    -- 길이를 적지 않은 VARCHAR다. 두 DB 모두 "제한 없는 가변 길이 문자열"로 해석하고,
+    -- 무엇보다 **JDBC 타입을 똑같이 VARCHAR로 보고한다.** 그래야 Hibernate validate가
+    -- H2와 PostgreSQL 양쪽에서 통과한다. (D21)
+    --
+    -- 처음에는 CLOB이었다. H2에는 있는 타입이라 166개 테스트가 모두 통과했지만
+    -- PostgreSQL에는 없어서 `type "clob" does not exist`로 마이그레이션이 실패했다.
+    -- 그 상태에서 prod 프로파일은 기동조차 못 했는데 아무 테스트도 알려주지 않았다.
+    --
+    -- TEXT로 바꾸자 이번에는 validate가 막았다. PostgreSQL은 TEXT를 VARCHAR로 보고하는데
+    -- 엔티티의 `@Lob`이 CLOB을 기대했기 때문이다. `@Lob`을 떼는 것이 옳은 수정이었다.
+    -- 자세한 이유는 IdempotencyKey.responseBody의 주석에 있다.
+    --
+    -- 응답 JSON은 길이가 정해져 있지 않아 VARCHAR(n)으로 잘라둘 수 없다.
+    -- 넘치면 저장이 실패하고, 실패하면 멱등성 보장 자체가 깨진다.
+    response_body        VARCHAR      NOT NULL,
 
     -- 만료 시각. 지나면 새 요청으로 취급한다.
     -- 만료 행을 지우는 배치는 두지 않았다. 조회 시 검사하므로 동작은 정확하고,

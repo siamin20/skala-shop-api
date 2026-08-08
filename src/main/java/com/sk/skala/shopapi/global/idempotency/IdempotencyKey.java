@@ -5,7 +5,6 @@ import java.time.Instant;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
-import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -48,8 +47,28 @@ public class IdempotencyKey {
     @Column(name = "request_fingerprint", nullable = false, length = 64)
     private String requestFingerprint;
 
-    /** 최초 처리 결과를 직렬화한 JSON. */
-    @Lob
+    /**
+     * 최초 처리 결과를 직렬화한 JSON.
+     *
+     * <p>처음에는 {@code @Lob}을 붙였다. "길이 제한 없는 문자열"이라는 뜻으로 쓴 것인데,
+     * PostgreSQL에서는 그 뜻이 아니었다. Hibernate가 {@code @Lob String}을
+     * <b>{@code oid}, 즉 PostgreSQL Large Object로 매핑</b>한다. 값이 행 안에 들어가지 않고
+     * {@code pg_largeobject}라는 별도 저장소에 들어가고 컬럼에는 그 번호만 남는다. (D21)
+     *
+     * <p>그 방식은 여기에 맞지 않는다.
+     *
+     * <ul>
+     *   <li>행을 지워도 Large Object는 남는다. {@code vacuumlo}로 따로 청소해야 한다
+     *   <li>autocommit 모드에서는 읽고 쓸 수 없다
+     *   <li>일반 SQL로 내용을 조회할 수 없어 운영 중 들여다보기 어렵다
+     * </ul>
+     *
+     * <p>그래서 {@code @Lob}을 떼고 평범한 {@code String}으로 둔다. 길이를 지정하지 않아
+     * Hibernate는 varchar 계열로 판단하고, 마이그레이션의 길이 없는 {@code VARCHAR}와 맞는다.
+     *
+     * <p>H2에서는 이 문제가 드러나지 않았다. H2 방언은 {@code @Lob}을 CLOB으로 매핑하고
+     * CLOB은 H2에 실제로 있는 타입이라 아무 경고 없이 통과했다.
+     */
     @Column(name = "response_body", nullable = false)
     private String responseBody;
 
