@@ -5,6 +5,7 @@ import ConfirmDialog from './components/ConfirmDialog.jsx'
 import CheckoutSheet from './components/CheckoutSheet.jsx'
 import FlashSales from './components/FlashSales.jsx'
 import Header from './components/Header.jsx'
+import Home from './components/Home.jsx'
 import Login from './components/Login.jsx'
 import MyPage from './components/MyPage.jsx'
 import ProductGrid from './components/ProductGrid.jsx'
@@ -27,7 +28,8 @@ const SORTS = [
 export default function App() {
   const [me, setMe] = useState(null)
   const [booting, setBooting] = useState(true)
-  const [view, setView] = useState('shop')          // shop | event | mypage
+  const [view, setView] = useState('home')          // home | shop | event | mypage
+  const [best, setBest] = useState([])              // 홈의 인기 상품
   const [filter, setFilter] = useState({})          // { category, subcategory }
   const [sort, setSort] = useState('BEST')
   const [page, setPage] = useState(0)
@@ -101,6 +103,9 @@ export default function App() {
   useEffect(() => {
     if (booting || !me) return
     api.categories().then(setCategories).catch(showError)
+    // 홈의 인기 상품. 목록과 정렬이 달라 따로 읽는다.
+    api.products({ page: 0, size: 5, sort: 'BEST' })
+      .then((d) => setBest(d.content)).catch(() => {})
     loadMine().catch(showError)
   }, [booting, me, loadMine])
 
@@ -235,7 +240,7 @@ export default function App() {
         cartCount={cart.count}
         me={me}
         point={point}
-        onHome={() => { setView('shop'); setFilter({}); setPage(0); window.scrollTo({ top: 0 }) }}
+        onHome={() => { setView('home'); setFilter({}); setPage(0); window.scrollTo({ top: 0 }) }}
         onNavigate={(v) => { setView(v); window.scrollTo({ top: 0 }) }}
         onSelectCategory={selectCategory}
         onOpenMenu={() => setMenuOpen(true)}
@@ -243,6 +248,20 @@ export default function App() {
       />
 
       <main className="wrap">
+        {view === 'home' && (
+          <Home
+            sales={sales}
+            best={best}
+            categories={categories}
+            onSelectCategory={selectCategory}
+            onGoEvent={() => { setView('event'); window.scrollTo({ top: 0 }) }}
+            onProduct={(p) => setCheckout({
+              kind: 'cart',
+              items: [{ productId: p.id, name: p.name, price: p.price, quantity: 1 }],
+            })}
+          />
+        )}
+
         {view === 'shop' && (
           <>
             <div className="list-head">

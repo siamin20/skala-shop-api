@@ -6,7 +6,11 @@ import com.sk.skala.shopapi.global.error.BusinessException;
 import com.sk.skala.shopapi.global.error.ErrorCode;
 import com.sk.skala.shopapi.product.domain.Product;
 
+import com.sk.skala.shopapi.global.common.Money;
+
+import jakarta.persistence.AttributeOverride;
 import jakarta.persistence.Column;
+import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
@@ -57,6 +61,18 @@ public class FlashSale {
     @JoinColumn(name = "product_id", nullable = false)
     private Product product;
 
+    /**
+     * 특가 판매가. (D42)
+     *
+     * <p>상품 정가와 별개로 이 이벤트에서만 적용된다. "특가"라고 부르면서 정가 그대로
+     * 팔면 사용자 입장에서는 <b>특가가 아니라 그냥 재고 제한</b>이다.
+     *
+     * <p>남은 수량은 급박함을 만들고, 할인율은 이득을 만든다. 둘 다 있어야 참여 이유가 된다.
+     */
+    @Embedded
+    @AttributeOverride(name = "amount", column = @Column(name = "sale_price", nullable = false))
+    private Money salePrice;
+
     @Column(name = "total_quantity", nullable = false)
     private int totalQuantity;
 
@@ -82,7 +98,21 @@ public class FlashSale {
 
     public FlashSale(String name, Product product, int totalQuantity,
             Instant startsAt, Instant endsAt) {
+        // 할인가를 지정하지 않으면 정가 그대로다. 테스트가 만드는 이벤트처럼
+        // 할인율이 관심사가 아닌 경우에 매번 값을 정하게 하지 않는다.
+        this(name, product, product.getPrice(), totalQuantity, startsAt, endsAt);
+    }
 
+    public FlashSale(String name, Product product, Money salePrice, int totalQuantity,
+            Instant startsAt, Instant endsAt) {
+
+        if (salePrice == null || salePrice.isZero()) {
+            throw new IllegalArgumentException("특가 판매가는 0원일 수 없습니다");
+        }
+        if (product.getPrice().isLessThan(salePrice)) {
+            // 정가보다 비싼 "특가"는 말이 되지 않는다. 입력 실수를 여기서 막는다.
+            throw new IllegalArgumentException("특가는 정가보다 비쌀 수 없습니다");
+        }
         if (totalQuantity <= 0) {
             throw new IllegalArgumentException("이벤트 수량은 1개 이상이어야 합니다");
         }
@@ -92,6 +122,7 @@ public class FlashSale {
 
         this.name = name;
         this.product = product;
+        this.salePrice = salePrice;
         this.totalQuantity = totalQuantity;
         this.remaining = totalQuantity;
         this.startsAt = startsAt;
@@ -139,5 +170,27 @@ public class FlashSale {
 
     public int soldQuantity() {
         return totalQuantity - remaining;
+    }
+
+    /**
+     * 할인율(%). 내림한다.
+     *
+     * <p>올림하면 실제보다 커 보인다. 39.6%를 40%로 표시하는 것은 사소해 보이지만
+     * <b>가격 표시는 올려 말하면 안 되는 종류</b>다.
+     */
+    public int discountRate() {
+        long list = product.getPrice().getAmount();
+        if (list <= 0) return 0;
+        return (int) ((list - salePrice.getAmount()) * 100 / list);
+    }
+
+    /** 정가 대비 아끼는 금액. */
+    public Money savedAmount() {
+        return product.getPrice().minus(salePrice);
+    }
+
+    /** 이 이벤트에서 결제할 총액. */
+    public Money totalPriceOf(int quantity) {
+        return salePrice.times(quantity);
     }
 }

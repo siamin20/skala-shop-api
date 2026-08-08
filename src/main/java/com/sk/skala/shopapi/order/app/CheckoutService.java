@@ -58,11 +58,15 @@ public class CheckoutService {
     private final RewardPolicy rewardPolicy;
     private final com.sk.skala.shopapi.delivery.app.DeliveryAddressService deliveryAddressService;
 
+    /** 주문·결제 원장. 업무 처리와 기록을 나눠 뒀다. (D41, D43) */
+    private final com.sk.skala.shopapi.order.ledger.OrderLedger orderLedger;
+    private final CustomerRepository customers;
+
     public CheckoutResponse checkout(String customerId, CheckoutRequest request) {
         // ── 0. 배송지를 저장한다 ──
         // 결제보다 먼저 한다. 결제가 성공했는데 배송지를 못 받으면 어디로 보낼지 모른다.
         if (request.delivery() != null) {
-            deliveryAddressService.save(customerId, request.delivery());
+            deliveryAddressService.saveForCheckout(customerId, request.delivery());
         }
 
         // ── 1. 금액을 먼저 계산한다 (트랜잭션 밖) ──
@@ -77,9 +81,21 @@ public class CheckoutService {
         if (request.paymentMethod() == PaymentMethod.POINT) {
             // 명세의 기본 동작이다. 전액 포인트로 내고 적립은 없다.
             OrderListResponse orders = null;
+            java.util.List<com.sk.skala.shopapi.order.ledger.OrderLedger.Line> lines =
+                    new java.util.ArrayList<>();
+
             for (CheckoutRequest.Item item : request.items()) {
                 orders = orderService.placeOrder(customerId, item.toOrderRequest());
+                Product p = productRepository.findById(item.productId()).orElseThrow();
+                Money lineTotal = p.totalPriceOf(item.quantity());
+                lines.add(new com.sk.skala.shopapi.order.ledger.OrderLedger.Line(
+                        p, item.quantity(), lineTotal, lineTotal));
             }
+
+            // 무슨 일이 있었는지 남긴다. 이게 없으면 취소해도 흔적이 사라진다. (D43)
+            orderLedger.record(customer(customerId), lines, total, Money.ZERO, Money.ZERO,
+                    PaymentMethod.POINT, null, null);
+
             return new CheckoutResponse(orders, total.getAmount(), 0, 0, null, null);
         }
 
@@ -103,6 +119,22 @@ public class CheckoutService {
         try {
             OrderListResponse orders = applyOrder(customerId, request, usePoint, cardAmount);
             Money earned = rewardPolicy.rewardFor(cardAmount);
+
+            java.util.List<com.sk.skala.shopapi.order.ledger.OrderLedger.Line> lines =
+                    new java.util.ArrayList<>();
+            for (CheckoutRequest.Item item : request.items()) {
+                Product p = productRepository.findById(item.productId()).orElseThrow();
+                Money lineTotal = p.totalPriceOf(item.quantity());
+                // 적립금 사용액을 항목 비중대로 나눈다. 취소할 때 낸 만큼 돌려주려면 필요하다.
+                Money linePoint = total.isZero()
+                        ? Money.ZERO
+                        : usePoint.proportion((int) lineTotal.getAmount(), (int) total.getAmount());
+                lines.add(new com.sk.skala.shopapi.order.ledger.OrderLedger.Line(
+                        p, item.quantity(), lineTotal, linePoint));
+            }
+
+            orderLedger.record(customer(customerId), lines, usePoint, cardAmount, earned,
+                    PaymentMethod.CARD, approval.approvalNumber(), approval.maskedCard());
 
             return new CheckoutResponse(
                     orders, usePoint.getAmount(), cardAmount.getAmount(), earned.getAmount(),
@@ -175,6 +207,12 @@ public class CheckoutService {
      * <p>초과분을 오류로 돌려주지 않고 잘라낸다. 사용자가 "전액 사용"을 눌렀는데
      * 1원 차이로 실패하는 것보다 가능한 만큼 쓰는 편이 낫다.
      */
+    private Customer customer(String customerId) {
+        return customers.findById(customerId)
+                .orElseThrow(() -> new BusinessException(
+                        ErrorCode.DATA_NOT_FOUND, "고객을 찾을 수 없습니다: " + customerId));
+    }
+
     private Money resolveUsePoint(String customerId, CheckoutRequest request, Money total) {
         if (request.usePoint() == 0) {
             return Money.ZERO;

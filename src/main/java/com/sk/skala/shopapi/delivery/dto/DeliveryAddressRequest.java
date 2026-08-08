@@ -12,6 +12,9 @@ import jakarta.validation.constraints.Size;
  */
 public record DeliveryAddressRequest(
 
+        @Size(max = 30, message = "배송지 이름은 30자를 넘을 수 없습니다")
+        String label,
+
         @NotBlank(message = "받는 분을 입력해 주세요")
         @Size(max = 50, message = "받는 분은 50자를 넘을 수 없습니다")
         String recipient,
@@ -30,5 +33,17 @@ public record DeliveryAddressRequest(
         String address,
 
         @Size(max = 100, message = "상세 주소는 100자를 넘을 수 없습니다")
-        String addressDetail) {
+        String addressDetail,
+
+        /*
+         * 공동현관 비밀번호.
+         *
+         * 없어도 된다. 단독주택이나 현관이 열려 있는 건물이 있다.
+         * 필수로 두면 그런 주소에 아무 값이나 넣게 된다.
+         */
+        @Size(max = 50, message = "공동현관 비밀번호는 50자를 넘을 수 없습니다")
+        String entrancePassword,
+
+        /** 기본 배송지로 지정할지. 첫 배송지는 자동으로 기본이 된다. */
+        Boolean isDefault) {
 }

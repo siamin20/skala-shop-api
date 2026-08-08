@@ -47,6 +47,16 @@ export default function Header({
             <b>{won(point)}P</b>
           </div>
 
+          {/* 마이페이지는 적립금과 장바구니 사이에 둔다. 셋 다 "내 것"이라 한 묶음이다. */}
+          <button className={`icon-btn ${view === 'mypage' ? 'on' : ''}`}
+                  onClick={() => onNavigate('mypage')} aria-label="마이페이지">
+            <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
+              <circle cx="10" cy="7" r="3.2" stroke="currentColor" strokeWidth="1.6" fill="none" />
+              <path d="M4 17c0-3.3 2.7-5 6-5s6 1.7 6 5" stroke="currentColor" strokeWidth="1.6"
+                    fill="none" strokeLinecap="round" />
+            </svg>
+          </button>
+
           <button className="icon-btn cart-btn" onClick={onOpenCart} aria-label="장바구니">
             <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
               <path d="M3 4h2l2 9h8l2-6H6" stroke="currentColor" strokeWidth="1.6"
@@ -61,14 +71,14 @@ export default function Header({
 
       {/* ── 최상위 이동 ── */}
       <nav className="main-nav">
+        <button className={view === 'home' ? 'on' : ''} onClick={() => onNavigate('home')}>
+          홈
+        </button>
         <button className={view === 'shop' ? 'on' : ''} onClick={() => onNavigate('shop')}>
           전체 상품
         </button>
         <button className={view === 'event' ? 'on' : ''} onClick={() => onNavigate('event')}>
           오늘의 특가
-        </button>
-        <button className={view === 'mypage' ? 'on' : ''} onClick={() => onNavigate('mypage')}>
-          마이페이지
         </button>
       </nav>
 

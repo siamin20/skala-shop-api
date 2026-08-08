@@ -50,6 +50,9 @@ public class OrderService {
 
     /** 구매 적립 정책. 결제한 금액의 일정 비율을 포인트로 되돌려준다. (D31) */
     private final RewardPolicy rewardPolicy;
+
+    /** 취소를 원장에 남긴다. 없으면 취소 흔적이 사라진다. (D43) */
+    private final com.sk.skala.shopapi.order.ledger.OrderLedger orderLedger;
     private final ProductRepository productRepository;
     private final OrderItemRepository orderItemRepository;
 
@@ -205,6 +208,10 @@ public class OrderService {
         if (orderItem.isEmpty()) {
             orderItemRepository.delete(orderItem);
         }
+
+        // 원장에 취소를 기록한다. order_item은 수량이 0이 되면 사라지지만
+        // "샀다가 취소했다"는 사실은 남아야 한다.
+        orderLedger.recordCancel(customerId, request.productId(), request.quantity());
 
         return currentOrders(customer);
     }

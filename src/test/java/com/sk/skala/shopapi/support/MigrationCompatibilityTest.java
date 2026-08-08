@@ -83,7 +83,8 @@ class MigrationCompatibilityTest extends PostgresIntegrationTest {
 
             assertThat(tables)
                     .containsExactly("customer", "delivery_address", "flash_sale",
-                            "idempotency_key", "order_item", "product");
+                            "idempotency_key", "order_item", "order_line", "orders",
+                            "payment", "product");
         }
 
         @Test

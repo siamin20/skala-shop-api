@@ -54,30 +54,71 @@ public class DeliveryAddress {
     @Column(name = "address_detail", length = 100)
     private String addressDetail;
 
+    /**
+     * 공동현관 비밀번호. (D34)
+     *
+     * <p>아파트·오피스텔은 현관을 못 열면 배송이 그 자리에서 멈춘다.
+     *
+     * <p><b>응답에 그대로 싣지 않는다.</b> 이 값을 알면 건물에 들어갈 수 있다.
+     * 등록 여부만 알려주고, 실제 값은 배송 처리에서만 쓴다.
+     */
+    @Column(name = "entrance_password", length = 50)
+    private String entrancePassword;
+
+    /** 배송지 별칭. "집", "회사"처럼 목록에서 구분할 이름이다. */
+    @Column(nullable = false, length = 30)
+    private String label;
+
+    /**
+     * 기본 배송지 여부.
+     *
+     * <p>고객당 하나만 참이다. 여러 개가 기본이면 결제 화면이 어느 것을 골라야 할지 모른다.
+     * DB에 부분 유니크 인덱스를 걸어 최종 방어선을 뒀다.
+     */
     @Column(name = "is_default", nullable = false)
     private boolean isDefault;
 
-    public DeliveryAddress(Customer customer, String recipient, String phone,
-            String zipcode, String address, String addressDetail) {
+    public DeliveryAddress(Customer customer, String label, String recipient, String phone,
+            String zipcode, String address, String addressDetail, String entrancePassword,
+            boolean isDefault) {
 
         this.customer = customer;
+        this.label = (label == null || label.isBlank()) ? "기본 배송지" : label;
         this.recipient = recipient;
         this.phone = phone;
         this.zipcode = zipcode;
         this.address = address;
         this.addressDetail = addressDetail;
-        this.isDefault = true;
+        this.entrancePassword = entrancePassword;
+        this.isDefault = isDefault;
     }
 
     /** 배송지를 수정한다. 새로 만들지 않는 이유는 기본 배송지가 하나로 유지되어야 해서다. */
-    public void update(String recipient, String phone, String zipcode,
-            String address, String addressDetail) {
+    public void update(String label, String recipient, String phone, String zipcode,
+            String address, String addressDetail, String entrancePassword) {
 
+        this.label = (label == null || label.isBlank()) ? this.label : label;
         this.recipient = recipient;
         this.phone = phone;
         this.zipcode = zipcode;
         this.address = address;
         this.addressDetail = addressDetail;
+        this.entrancePassword = entrancePassword;
+    }
+
+    /** 기본 배송지로 지정하거나 해제한다. 고객당 하나만 참이어야 한다. */
+    public void markDefault(boolean value) {
+        this.isDefault = value;
+    }
+
+    /**
+     * 공동현관 비밀번호가 등록되어 있는지.
+     *
+     * <p>값 자체가 아니라 <b>등록 여부만</b> 응답에 담는다.
+     * 화면은 "등록됨"만 보여주고, 바꾸려면 다시 입력하게 한다.
+     */
+    public boolean hasEntrancePassword() {
+        return entrancePassword != null && !entrancePassword.isBlank();
     }
 
     /** 한 줄로 합친 주소. 주문 확인 화면에 쓴다. */

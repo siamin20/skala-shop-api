@@ -69,6 +69,7 @@ public class OrderController {
 
     /** 카드 결제를 포함한 주문 처리. 명세 경로는 이쪽을 쓰지 않는다. (D31, D32) */
     private final com.sk.skala.shopapi.order.app.CheckoutService checkoutService;
+    private final com.sk.skala.shopapi.order.ledger.OrderHistoryService orderHistoryService;
 
     /**
      * 내 주문 목록을 조회한다.
@@ -100,6 +101,20 @@ public class OrderController {
         return idempotentExecutor.execute(
                 idempotencyKey, principal.customerId(), request, OrderListResponse.class,
                 () -> orderService.placeOrder(principal.customerId(), request));
+    }
+
+    /**
+     * 주문 내역. <b>일어난 일의 기록</b>이다. (D43)
+     *
+     * <p>{@code GET /api/orders}가 반환하는 것과 다르다. 그쪽은 명세의 모델로
+     * "지금 보유한 상품"을 준다. 이쪽은 취소한 주문까지 포함한 이력이다.
+     */
+    @Operation(summary = "주문 내역", description = "취소한 주문을 포함한 이력을 최신순으로 반환한다.")
+    @GetMapping("/history")
+    public java.util.List<com.sk.skala.shopapi.order.ledger.dto.OrderHistoryResponse> history(
+            @AuthenticationPrincipal AuthenticatedCustomer principal) {
+
+        return orderHistoryService.findHistory(principal.customerId());
     }
 
     /**
