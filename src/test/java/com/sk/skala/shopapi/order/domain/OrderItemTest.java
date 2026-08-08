@@ -22,7 +22,7 @@ import com.sk.skala.shopapi.product.domain.Product;
 class OrderItemTest {
 
     private final Customer 고객 = new Customer("skala01", "$2a$10$hashed", Money.of(1_000_000));
-    private final Product 무선마우스 = new Product("무선마우스", Money.of(15_000));
+    private final Product 무선마우스 = new Product("무선마우스", Money.of(15_000), 1000);
 
     @Test
     @DisplayName("주문 시점의 단가를 복사해 생성된다")
@@ -137,7 +137,7 @@ class OrderItemTest {
     void partialCancellationsSumToPaidAmount() {
         // 나누어떨어지지 않는 금액으로 잔돈 처리를 확인한다.
         // 10,000원 3개 = 30,000원. 1개씩 세 번 취소.
-        Product 상품 = new Product("잔돈확인용", Money.of(10_000));
+        Product 상품 = new Product("잔돈확인용", Money.of(10_000), 1000);
         OrderItem item = new OrderItem(고객, 상품, 3);
         상품.changePrice(Money.of(1L));
         item.increase(1, Money.of(1L));   // 누적 30,001원 / 4개

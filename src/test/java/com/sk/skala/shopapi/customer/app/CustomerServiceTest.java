@@ -163,7 +163,7 @@ class CustomerServiceTest {
         @DisplayName("고객 정보와 주문 목록을 함께 준다")
         void getCustomerWithOrders() {
             Customer customer = 가입고객("skala01", 970_000);
-            Product mouse = productRepository.save(new Product("무선마우스", Money.of(15_000)));
+            Product mouse = productRepository.save(new Product("무선마우스", Money.of(15_000), 1000));
             orderItemRepository.save(new OrderItem(customer, mouse, 2));
 
             OrderListResponse response = customerService.getCustomerWithOrders("skala01");
@@ -325,7 +325,7 @@ class CustomerServiceTest {
         @DisplayName("주문이 있어도 탈퇴할 수 있다")
         void deleteWithOrders() {
             Customer customer = 가입고객("skala01", 1_000_000);
-            Product mouse = productRepository.save(new Product("무선마우스", Money.of(15_000)));
+            Product mouse = productRepository.save(new Product("무선마우스", Money.of(15_000), 1000));
             orderItemRepository.save(new OrderItem(customer, mouse, 2));
 
             // 주문 항목을 먼저 지우지 않으면 외래 키 제약에 걸려 실패한다
@@ -339,7 +339,7 @@ class CustomerServiceTest {
         @DisplayName("탈퇴해도 상품은 남는다")
         void productSurvivesCustomerDeletion() {
             Customer customer = 가입고객("skala01", 1_000_000);
-            Product mouse = productRepository.save(new Product("무선마우스", Money.of(15_000)));
+            Product mouse = productRepository.save(new Product("무선마우스", Money.of(15_000), 1000));
             orderItemRepository.save(new OrderItem(customer, mouse, 1));
 
             customerService.deleteCustomer("skala01");

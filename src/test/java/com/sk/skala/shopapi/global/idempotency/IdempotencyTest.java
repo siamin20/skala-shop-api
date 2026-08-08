@@ -66,7 +66,7 @@ class IdempotencyTest {
         productRepository.deleteAllInBatch();
 
         customerRepository.save(new Customer("skala01", "$2a$10$h", Money.of(1_000_000)));
-        무선마우스Id = productRepository.save(new Product("무선마우스", Money.of(15_000))).getId();
+        무선마우스Id = productRepository.save(new Product("무선마우스", Money.of(15_000), 1000)).getId();
     }
 
     private String key() {
@@ -159,9 +159,15 @@ class IdempotencyTest {
         void failedRequestIsNotMemoized() throws Exception {
             String k = key();
 
-            // 잔액을 넘는 주문이라 실패한다
+            // 잔액을 넘는 주문이라 실패한다. 재고(1000)는 넘지 않는 수량을 고른다.
+            //
+            // 재고까지 넘기면 OUT_OF_STOCK이 먼저 나서 이 테스트가 확인하려는
+            // "잔액 부족으로 실패한 요청"이 아니게 된다. 게다가 이 테스트는 @Transactional이라
+            // MockMvc 호출들이 한 트랜잭션을 공유한다. 예외가 나도 실제 롤백은 테스트가
+            // 끝날 때 일어나므로, 앞선 호출이 영속성 컨텍스트에 남긴 재고 차감이 그대로 보인다.
+            // 운영에서는 요청마다 트랜잭션이 따로라 생기지 않는 상황이다.
             mockMvc.perform(post("/api/orders").header("Idempotency-Key", k)
-                            .contentType(MediaType.APPLICATION_JSON).content(body(1000)))
+                            .contentType(MediaType.APPLICATION_JSON).content(body(100)))
                     .andExpect(status().isConflict())
                     .andExpect(jsonPath("$.code").value("INSUFFICIENT_POINT"));
 

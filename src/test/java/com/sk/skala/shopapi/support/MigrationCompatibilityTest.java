@@ -47,7 +47,7 @@ class MigrationCompatibilityTest extends PostgresIntegrationTest {
     class Migrations {
 
         @Test
-        @DisplayName("V1~V4가 모두 성공으로 기록된다")
+        @DisplayName("V1~V5가 모두 성공으로 기록된다")
         void allMigrationsSucceeded() {
             List<Map<String, Object>> history = jdbc.queryForList(
                     "SELECT version, description, success FROM flyway_schema_history "
@@ -55,7 +55,7 @@ class MigrationCompatibilityTest extends PostgresIntegrationTest {
 
             assertThat(history)
                     .extracting(row -> row.get("version"))
-                    .containsExactly("1", "2", "3", "4");
+                    .containsExactly("1", "2", "3", "4", "5");
 
             // 하나라도 실패했다면 Flyway가 기동을 막았겠지만, 명시적으로 확인해둔다.
             assertThat(history).allSatisfy(row ->
@@ -105,6 +105,17 @@ class MigrationCompatibilityTest extends PostgresIntegrationTest {
             // 인코딩이 어긋나면 예외 없이 '???'나 깨진 글자로 저장된다.
             // 조용히 잘못되는 종류라 눈으로 확인할 기회가 없다.
             assertThat(names).containsExactly("무선마우스", "블루투스키보드", "USB허브");
+        }
+
+        @Test
+        @DisplayName("V5가 기존 상품에 재고를 채운다")
+        void v5BackfillsStock() {
+            // DEFAULT 0으로 컬럼만 추가하면 기존 상품이 전부 품절이 된다.
+            // 컬럼 추가 → 값 채우기 → 기본값 제거 순서를 지켰는지 확인한다. (D22)
+            List<Integer> stocks = jdbc.queryForList(
+                    "SELECT product_stock FROM product ORDER BY id", Integer.class);
+
+            assertThat(stocks).allSatisfy(stock -> assertThat(stock).isPositive());
         }
 
         @Test
@@ -164,7 +175,18 @@ class MigrationCompatibilityTest extends PostgresIntegrationTest {
         @DisplayName("상품명은 중복될 수 없다")
         void productNameIsUnique() {
             assertThatThrownBy(() -> jdbc.update(
-                    "INSERT INTO product (product_name, product_price) VALUES ('무선마우스', 1)"))
+                    "INSERT INTO product (product_name, product_price, product_stock) "
+                            + "VALUES ('무선마우스', 1, 10)"))
+                    .isInstanceOf(DataIntegrityViolationException.class);
+        }
+
+        @Test
+        @DisplayName("재고는 음수가 될 수 없다")
+        void stockCannotBeNegative() {
+            // 애플리케이션이 먼저 검사하지만 그 검사를 빠뜨린 경로가 하나만 생겨도
+            // 음수 재고가 만들어진다. V5의 CHECK 제약이 최종 방어선이다. (D22)
+            assertThatThrownBy(() -> jdbc.update(
+                    "UPDATE product SET product_stock = -1 WHERE product_name = '무선마우스'"))
                     .isInstanceOf(DataIntegrityViolationException.class);
         }
 

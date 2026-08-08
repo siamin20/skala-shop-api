@@ -50,7 +50,7 @@ class ProductControllerTest {
     }
 
     private Product 저장된상품(String name, long price) {
-        return productRepository.save(new Product(name, Money.of(price)));
+        return productRepository.save(new Product(name, Money.of(price), 1000));
     }
 
     @Nested

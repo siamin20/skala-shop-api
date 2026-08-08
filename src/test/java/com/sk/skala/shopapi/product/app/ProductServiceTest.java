@@ -55,7 +55,7 @@ class ProductServiceTest {
     }
 
     private Product 저장된상품(String name, long price) {
-        return productRepository.save(new Product(name, Money.of(price)));
+        return productRepository.save(new Product(name, Money.of(price), 1000));
     }
 
     @Nested
@@ -129,7 +129,7 @@ class ProductServiceTest {
         @DisplayName("새 상품을 등록한다")
         void createProduct() {
             ProductResponse created = productService.createProduct(
-                    new ProductCreateRequest("무선마우스", 15_000L));
+                    new ProductCreateRequest("무선마우스", 15_000L, 100));
 
             assertThat(created.id()).isNotNull();
             assertThat(created.name()).isEqualTo("무선마우스");
@@ -142,7 +142,7 @@ class ProductServiceTest {
             저장된상품("무선마우스", 15_000);
 
             assertThatThrownBy(() -> productService.createProduct(
-                    new ProductCreateRequest("무선마우스", 20_000L)))
+                    new ProductCreateRequest("무선마우스", 20_000L, 100)))
                     .isInstanceOf(BusinessException.class)
                     .extracting(e -> ((BusinessException) e).getErrorCode())
                     .isEqualTo(ErrorCode.DATA_DUPLICATED);
@@ -156,7 +156,7 @@ class ProductServiceTest {
             // Product 생성자가 trim하므로 "  무선마우스  "도 같은 이름이 된다.
             // 다듬기 전 값으로 비교하면 이 중복이 그대로 통과한다.
             assertThatThrownBy(() -> productService.createProduct(
-                    new ProductCreateRequest("  무선마우스  ", 20_000L)))
+                    new ProductCreateRequest("  무선마우스  ", 20_000L, 100)))
                     .isInstanceOf(BusinessException.class)
                     .extracting(e -> ((BusinessException) e).getErrorCode())
                     .isEqualTo(ErrorCode.DATA_DUPLICATED);

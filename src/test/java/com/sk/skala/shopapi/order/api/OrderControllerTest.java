@@ -59,7 +59,7 @@ class OrderControllerTest {
 
         customerRepository.save(new Customer("skala01", "$2a$10$h", Money.of(1_000_000)));
         customerRepository.save(new Customer("skala02", "$2a$10$h", Money.of(1_000_000)));
-        무선마우스Id = productRepository.save(new Product("무선마우스", Money.of(15_000))).getId();
+        무선마우스Id = productRepository.save(new Product("무선마우스", Money.of(15_000), 1000)).getId();
     }
 
     private String orderBody(int quantity) {

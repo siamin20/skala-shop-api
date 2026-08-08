@@ -28,6 +28,12 @@ spring:
     enabled: true
     locations: classpath:db/migration
 
+  transaction:
+    # 트랜잭션 타임아웃. 락 대기(3s)와 재시도 총합(150ms)보다 길고
+    # 아래 statement_timeout(10s)보다 짧아야 한다. 순서가 뒤집히면
+    # 안쪽 방어선이 한 번도 발동하지 못한다. (D22)
+    default-timeout: 5s
+
   jpa:
     # 뷰 렌더링까지 영속성 컨텍스트를 열어두는 기본 동작을 끈다.
     # 켜두면 트랜잭션 밖에서 지연 로딩이 일어나 커넥션을 오래 붙잡는다.
@@ -54,6 +60,28 @@ shop:
     access-validity: ${JWT_ACCESS_VALIDITY:15m}
     # 재로그인 없이 유지할 기간. HttpOnly 쿠키로만 오간다.
     refresh-validity: ${JWT_REFRESH_VALIDITY:14d}
+
+  concurrency:
+    # 낙관적 락 충돌 시 총 시도 횟수(첫 시도 포함). (D22)
+    #
+    # 처음에 3으로 잡았다가 실측 후 5로 올렸다. 한 고객에 동시 20건을 넣고 잰 결과다.
+    #
+    #   시도  성공  거절   소요(ms)
+    #     1     2    18        20
+    #     3    19     1       191
+    #     5    20     0       462
+    #    10    20     0      1000
+    #
+    # 3회는 대부분 흡수하지만 완전하지 않았다. 5회부터 전부 성공한다.
+    # 10회로 늘려도 성공률은 그대로고 지연만 늘어 얻는 것이 없다.
+    max-retry-attempts: ${SHOP_MAX_RETRY_ATTEMPTS:5}
+    # 첫 재시도까지의 기준 대기. 시도마다 2배가 되고 지터가 섞인다.
+    # 5회 기준 최악의 대기 총합은 50+100+200+400 = 750ms로
+    # 아래 트랜잭션 타임아웃(5s) 안에 넉넉히 들어온다.
+    retry-backoff: ${SHOP_RETRY_BACKOFF:50ms}
+    # 비관적 락 대기 한도. 실제 적용은 아래 datasource의 lock_timeout이 한다.
+    # 이 값은 문서와 테스트가 참조하는 기준값이다.
+    lock-timeout: ${SHOP_LOCK_TIMEOUT:3s}
 
   idempotency:
     # 키 보관 기간. 짧으면 늦은 재시도가 중복 실행되고, 길면 테이블이 커진다.
@@ -124,6 +152,20 @@ spring:
     driver-class-name: org.postgresql.Driver
     username: ${DATABASE_USERNAME:skalashop}
     password: ${DATABASE_PASSWORD:skalashop}
+
+    hikari:
+      data-source-properties:
+        # 세션 단위 타임아웃. (D22)
+        #
+        # 비관적 락 대기 시간을 JPA 힌트로 걸 수 없어서 여기에 둔다.
+        # PostgreSQL의 FOR UPDATE에는 대기 시간을 지정하는 문법이 없다.
+        # NOWAIT(0)과 SKIP LOCKED뿐이라 "3초만 기다린다"를 표현할 방법이 없다.
+        #
+        # lock_timeout이 없으면 인기 상품 한 행의 경합이 커넥션을 무한정 붙잡아
+        # 풀이 고갈되고, 락과 무관한 API까지 함께 멈춘다.
+        #
+        # statement_timeout은 락과 무관한 폭주 쿼리까지 막는 바깥 방어선이다.
+        options: "-c lock_timeout=${SHOP_LOCK_TIMEOUT_MS:3000} -c statement_timeout=${SHOP_STATEMENT_TIMEOUT_MS:10000}"
 
   jpa:
     # 운영에서는 스키마를 절대 자동으로 바꾸지 않는다.

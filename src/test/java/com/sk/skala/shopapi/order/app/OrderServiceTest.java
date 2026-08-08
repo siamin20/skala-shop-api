@@ -64,7 +64,7 @@ class OrderServiceTest {
 
         고객 = customerRepository.save(
                 new Customer("skala01", "$2a$10$hashed", Money.of(1_000_000)));
-        무선마우스 = productRepository.save(new Product("무선마우스", Money.of(15_000)));
+        무선마우스 = productRepository.save(new Product("무선마우스", Money.of(15_000), 1000));
     }
 
     private Money 잔액() {
@@ -106,7 +106,7 @@ class OrderServiceTest {
         @Test
         @DisplayName("다른 상품은 별도 항목으로 쌓인다")
         void differentProductsAreSeparateItems() {
-            Product 허브 = productRepository.save(new Product("USB허브", Money.of(39_000)));
+            Product 허브 = productRepository.save(new Product("USB허브", Money.of(39_000), 1000));
 
             orderService.placeOrder("skala01", new OrderRequest(무선마우스.getId(), 1));
             OrderListResponse response = orderService.placeOrder(
@@ -360,7 +360,7 @@ class OrderServiceTest {
         @Test
         @DisplayName("주문과 취소를 섞어도 잔액이 정확하다")
         void mixedOperationsKeepBalanceExact() {
-            Product 키보드 = productRepository.save(new Product("블루투스키보드", Money.of(29_000)));
+            Product 키보드 = productRepository.save(new Product("블루투스키보드", Money.of(29_000), 1000));
 
             orderService.placeOrder("skala01", new OrderRequest(무선마우스.getId(), 2));   // -30,000
             orderService.placeOrder("skala01", new OrderRequest(키보드.getId(), 1));       // -29,000
