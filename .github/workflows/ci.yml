@@ -1,0 +1,126 @@
+# PR마다 테스트를 자동으로 돌린다.
+#
+# 이걸 만들기 전에는 로컬에서 돌린 결과를 PR 본문에 손으로 옮겨 적었다.
+# 안 돌리고 적어도 아무도 모르는 상태였다.
+#
+# 가장 신경 쓴 부분은 "초록불이 아무것도 검증하지 않는 상태"를 막는 것이다.
+# Testcontainers 테스트는 Docker가 없으면 실패가 아니라 건너뛰도록 만들어 뒀는데(D21),
+# CI에서 Docker가 어떤 이유로든 동작하지 않으면 그 테스트들이 조용히 빠진 채
+# 빌드가 성공한다. 그래서 건너뛴 테스트 수를 따로 검사한다.
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# 같은 PR에 커밋을 연달아 올리면 앞의 실행을 취소한다.
+# 어차피 볼 것은 마지막 결과인데, 겹쳐 돌리면 러너만 오래 잡는다.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: 빌드와 테스트
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # 컴파일은 Java 17을 목표로 하지만 실행은 21로 한다. (D11)
+      # 러너에는 21을 깔고, 17 타깃 컴파일은 build.gradle의 release 설정이 맡는다.
+      - name: JDK 21 설치
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      # 의존성과 빌드 캐시를 재사용한다. 없으면 매 실행이 처음부터 받는다.
+      - name: Gradle 설정
+        uses: gradle/actions/setup-gradle@v4
+
+      # Testcontainers가 쓸 Docker가 실제로 살아 있는지 먼저 본다.
+      # 여기서 죽으면 테스트가 조용히 건너뛰는 대신 이 단계에서 멈춘다.
+      - name: Docker 확인
+        run: docker version --format '{{.Server.Version}}'
+
+      - name: 빌드와 테스트
+        run: ./gradlew build --no-daemon
+
+      # 건너뛴 테스트가 하나라도 있으면 실패시킨다.
+      #
+      # Docker가 없는 개발 환경을 위해 건너뛰기 장치를 뒀는데(D21), CI에서까지
+      # 그게 발동하면 통합 테스트 없이 초록불이 뜬다. 그 초록불은 거짓이다.
+      - name: 건너뛴 테스트가 없는지 확인
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import glob, sys, xml.etree.ElementTree as ET
+
+          total = failed = skipped = 0
+          for path in glob.glob("build/test-results/test/*.xml"):
+              root = ET.parse(path).getroot()
+              total += int(root.get("tests"))
+              failed += int(root.get("failures")) + int(root.get("errors"))
+              skipped += int(root.get("skipped"))
+
+          print(f"테스트 {total}개 / 실패 {failed} / 건너뜀 {skipped}")
+
+          if total == 0:
+              sys.exit("테스트 결과가 없다. 테스트가 실행되지 않았다")
+          if skipped:
+              sys.exit(f"{skipped}개가 건너뛰어졌다. "
+                       "Testcontainers가 Docker를 찾지 못했을 가능성이 크다")
+
+          # 요약을 PR 화면에 남긴다. 로그를 열지 않고도 보이게 한다.
+          with open("summary.txt", "w") as f:
+              f.write(f"### 테스트 결과\n\n"
+                      f"- 전체 **{total}개**\n"
+                      f"- 실패 {failed}개\n"
+                      f"- 건너뜀 {skipped}개\n")
+          PY
+
+      - name: 결과를 요약에 표시
+        if: always()
+        run: cat summary.txt >> "$GITHUB_STEP_SUMMARY" || true
+
+      # 실패했을 때 어느 테스트가 왜 깨졌는지 보려면 리포트가 필요하다.
+      # 로그만 보고 원인을 찾는 것은 시간이 오래 걸린다.
+      - name: 실패 시 테스트 리포트 보관
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: build/reports/tests/test
+          retention-days: 7
+
+  image:
+    name: 컨테이너 이미지 빌드
+    runs-on: ubuntu-latest
+    # 테스트가 깨진 코드로 이미지를 만들 이유가 없다.
+    needs: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # 멀티스테이지 Dockerfile이 실제로 끝까지 도는지 확인한다. (D24)
+      # 푸시는 하지 않는다. 배포할 레지스트리가 없고, 검증 목적에는 빌드로 충분하다.
+      - name: 이미지 빌드
+        run: docker build -t skala-shop-api:ci .
+
+      - name: 이미지 크기 확인
+        run: |
+          SIZE=$(docker image inspect skala-shop-api:ci --format '{{.Size}}')
+          MB=$((SIZE / 1024 / 1024))
+          echo "이미지 크기: ${MB}MB"
+          echo "### 컨테이너 이미지" >> "$GITHUB_STEP_SUMMARY"
+          echo "- 크기 **${MB}MB**" >> "$GITHUB_STEP_SUMMARY"
+
+          # 멀티스테이지가 무너지면(예: 실행 스테이지가 JDK 이미지로 바뀌면)
+          # 크기가 1GB 근처로 돌아간다. 그때 알아채려고 상한을 둔다.
+          if [ "$MB" -gt 700 ]; then
+            echo "이미지가 700MB를 넘었다. 멀티스테이지 구성이 깨졌는지 확인이 필요하다"
+            exit 1
+          fi
