@@ -36,6 +36,17 @@ services:
       # 그대로 두면 누구나 토큰을 위조할 수 있다.
       # 이 값도 예시일 뿐이라 실제 배포에서는 반드시 바꿔야 한다.
       JWT_SECRET: ${JWT_SECRET:-compose-local-only-secret-key-change-me-please}
+
+      # 카드번호 암호화 키. 이것도 기본값이 없어 주지 않으면 기동에 실패한다. (D26, D32)
+      #
+      # 실제로 이 줄이 없어서 컨테이너가 11번 재시작했다. 설계대로 동작한 것이다.
+      # 조용히 뜬 뒤 첫 결제에서 터지는 것보다 낫다.
+      PAYMENT_ENCRYPTION_KEY: ${PAYMENT_ENCRYPTION_KEY:-compose-local-only-card-key-change-me-32b}
+
+      # 대기열을 켠다. Redis가 함께 뜨므로 헬스 체크도 켠다. (D24, D30)
+      SHOP_WAITING_ROOM: "true"
+      SHOP_WAITING_ROOM_ADMIT: "100"
+      MANAGEMENT_HEALTH_REDIS_ENABLED: "true"
     ports:
       - "${BACKEND_PORT:-8080}:8080"
     depends_on:
