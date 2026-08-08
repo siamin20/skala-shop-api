@@ -1,5 +1,6 @@
 package com.sk.skala.shopapi.product.app;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -121,11 +122,29 @@ public class ProductService {
      * <p>존재하지 않는 ID로 {@code deleteById}를 부르면 조용히 아무 일도 일어나지 않는다.
      * 그러면 클라이언트는 삭제에 성공했다고 오해한다. 먼저 조회해서 없으면 알려준다.
      *
-     * @throws BusinessException 없으면 {@link ErrorCode#DATA_NOT_FOUND}
+     * <p>주문 내역이 있는 상품은 지울 수 없다. {@code order_item}이 이 상품을 참조하기 때문이다.
+     * 여기서 잡지 않으면 외래 키 위반이 전역 처리기까지 올라가
+     * "이미 존재하는 데이터입니다"라는 <b>엉뚱한 메시지</b>로 나간다. 사용자는 무엇을 해야 할지 알 수 없다.
+     *
+     * <p>주문 저장소를 직접 조회해 미리 확인하지 않는 이유는 의존 방향 때문이다.
+     * {@code order → product}는 있어도 그 반대는 없다. 상품이 주문을 알게 되면 순환이 생긴다.
+     * 대신 {@code flush}로 제약 위반을 이 자리에서 드러내고 의미 있는 예외로 바꾼다.
+     *
+     * @throws BusinessException 없으면 {@link ErrorCode#DATA_NOT_FOUND},
+     *                           주문 내역이 있으면 {@link ErrorCode#DATA_IN_USE}
      */
     @Transactional
     public void deleteProduct(Long id) {
-        productRepository.delete(findProductOrThrow(id));
+        Product product = findProductOrThrow(id);
+
+        try {
+            productRepository.delete(product);
+            // flush가 없으면 DELETE가 트랜잭션 끝에 실행돼 이 try 블록 밖에서 터진다.
+            productRepository.flush();
+        } catch (DataIntegrityViolationException e) {
+            throw new BusinessException(
+                    ErrorCode.DATA_IN_USE, "주문 내역이 있는 상품은 삭제할 수 없습니다: " + product.getName());
+        }
     }
 
     /**
