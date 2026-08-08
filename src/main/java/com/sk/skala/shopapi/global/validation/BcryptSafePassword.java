@@ -33,9 +33,26 @@ import jakarta.validation.Payload;
 @Retention(RUNTIME)
 public @interface BcryptSafePassword {
 
+    /**
+     * 검증 실패 시 사용자에게 보여줄 메시지.
+     *
+     * <p>"64자 이하"가 아니라 "72바이트"라고 쓴다. 문자 수로 안내하면 한글 사용자는
+     * 왜 24자에서 막히는지 알 수 없다. 기준이 바이트임을 드러내야 원인을 짐작할 수 있다.
+     */
     String message() default "비밀번호는 UTF-8 기준 72바이트를 넘을 수 없습니다";
 
+    /**
+     * 검증 그룹.
+     *
+     * <p>Bean Validation 명세가 모든 제약에 요구하는 멤버라 비워 두더라도 선언해야 한다.
+     * 없으면 제약 애노테이션으로 인식되지 않는다.
+     */
     Class<?>[] groups() default {};
 
+    /**
+     * 검증 실패에 부가 정보를 실어 보내기 위한 확장 지점.
+     *
+     * <p>{@code groups}와 마찬가지로 명세가 요구하는 필수 멤버다. 이 프로젝트에서는 쓰지 않는다.
+     */
     Class<? extends Payload>[] payload() default {};
 }
