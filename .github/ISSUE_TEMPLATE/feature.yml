@@ -53,8 +53,13 @@ body:
     id: spec
     attributes:
       label: 과제 명세 관련 여부
-      description: 명세 페이지 번호. 명세에 없는 확장이면 결정 번호(D숫자)를 적습니다.
+      description: >
+        명세 페이지 번호. 명세에 없는 확장이면 결정 번호(D숫자)를 적습니다.
+        비워둘 수 없습니다. 명세와의 관계를 적지 않으면 나중에 "이건 왜 했지"를
+        되짚을 수 없고, 명세 이탈이 승인 없이 섞여 들어가는 것을 걸러내지 못합니다.
       placeholder: "540~544p / 또는 D22 (명세 외 확장)"
+    validations:
+      required: true
 
   - type: input
     id: branch
