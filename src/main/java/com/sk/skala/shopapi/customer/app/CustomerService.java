@@ -14,6 +14,7 @@ import com.sk.skala.shopapi.customer.domain.Customer;
 import com.sk.skala.shopapi.customer.domain.CustomerRepository;
 import com.sk.skala.shopapi.customer.dto.CustomerResponse;
 import com.sk.skala.shopapi.customer.dto.PointChargeRequest;
+import com.sk.skala.shopapi.customer.dto.PointUpdateRequest;
 import com.sk.skala.shopapi.customer.dto.SignUpRequest;
 import com.sk.skala.shopapi.global.common.Money;
 import com.sk.skala.shopapi.global.common.PageResponse;
@@ -117,6 +118,23 @@ public class CustomerService {
         // 영속 엔티티이므로 값만 바꾸면 트랜잭션 종료 시 변경 감지로 UPDATE된다. save 불필요.
         customer.chargePoint(Money.of(request.amount()));
 
+        return CustomerResponse.from(customer);
+    }
+
+    /**
+     * 포인트를 특정 값으로 조정한다. 관리자 전용이다.
+     *
+     * <p>명세 552p의 {@code updateCustomer}에 해당한다. 이전 잔액을 무시하고 덮어쓰므로
+     * 몇 번을 호출해도 결과가 같다. {@link #chargePoint} 와 달리 재시도해도 안전하다(D13).
+     *
+     * <p>고객 본인이 호출하면 잔액을 마음대로 설정할 수 있다. P2에서 관리자로 제한한다.
+     *
+     * @throws BusinessException 고객이 없으면 {@link ErrorCode#DATA_NOT_FOUND}
+     */
+    @Transactional
+    public CustomerResponse updateCustomerPoint(String customerId, PointUpdateRequest request) {
+        Customer customer = findCustomerOrThrow(customerId);
+        customer.adjustPointTo(Money.of(request.point()));
         return CustomerResponse.from(customer);
     }
 

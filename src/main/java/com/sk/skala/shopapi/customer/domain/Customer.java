@@ -110,6 +110,20 @@ public class Customer {
         this.point = point.plus(amount);
     }
 
+    /**
+     * 포인트를 특정 값으로 맞춘다. 관리자 조정 전용이다.
+     *
+     * <p>{@link #chargePoint(Money)}·{@link #refundPoint(Money)}와 달리 이전 잔액을 무시하고
+     * 덮어쓴다. 그래서 <b>고객 본인에게는 절대 열어서는 안 되는 동작</b>이다.
+     * 인가에서 관리자만 호출하도록 막는다(P2).
+     *
+     * <p>도메인에 두는 이유는, 서비스가 필드를 직접 대입하게 두면 Setter를 없앤 의미가 사라지기 때문이다.
+     * 위험한 동작일수록 이름을 붙여 드러내는 편이 낫다.
+     */
+    public void adjustPointTo(Money point) {
+        this.point = point;
+    }
+
     /** 이 고객이 {@code customerId}의 주인인지 확인한다. 남의 자원 접근을 막을 때 쓴다. */
     public boolean isOwner(String customerId) {
         return this.customerId.equals(customerId);
