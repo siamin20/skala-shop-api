@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -17,6 +18,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 import com.sk.skala.shopapi.customer.app.CustomerService;
 import com.sk.skala.shopapi.customer.dto.CustomerResponse;
 import com.sk.skala.shopapi.customer.dto.PointChargeRequest;
+import com.sk.skala.shopapi.customer.dto.PointUpdateRequest;
 import com.sk.skala.shopapi.customer.dto.SignUpRequest;
 import com.sk.skala.shopapi.global.common.PageResponse;
 import com.sk.skala.shopapi.order.dto.OrderListResponse;
@@ -39,7 +41,8 @@ import lombok.RequiredArgsConstructor;
  *
  * <pre>
  *   GET    /api/customers/list  →  GET    /api/customers               컬렉션은 경로 자체로 표현
- *   PUT    /api/customers       →  POST   /api/customers/{id}/points   포인트는 덮어쓰기가 아니라 충전
+ *   PUT    /api/customers       →  PUT    /api/customers/{id}          포인트 조정 (관리자, 멱등)
+ *                                +  POST   /api/customers/{id}/points   포인트 충전 (본인, 누적)
  *   DELETE /api/customers +본문  →  DELETE /api/customers/{id}          대상을 경로로 지정
  *   POST   /api/customers       →  POST   /api/customers               가입 (동일)
  * </pre>
@@ -119,6 +122,25 @@ public class CustomerController {
             @Valid @RequestBody PointChargeRequest request) {
 
         return customerService.chargePoint(customerId, request);
+    }
+
+    /**
+     * 포인트를 특정 값으로 조정한다. 관리자 전용이다.
+     *
+     * <p>명세 537p의 {@code PUT /api/customers}에 해당한다. 명세는 대상을 본문의 엔티티로 지정하지만
+     * 경로 변수로 받는다(D7). 본문과 경로에 대상이 둘 다 있으면 서로 다를 때 무엇을 믿을지 정해야 한다.
+     *
+     * <p>{@code PUT}이 맞는 이유는 이 요청이 <b>멱등</b>하기 때문이다. 이전 잔액을 무시하고 덮어쓰므로
+     * 몇 번을 보내도 결과가 같다. 반면 충전({@code POST /points})은 보낼 때마다 더해지므로 멱등하지 않다.
+     * 같은 자원을 다루지만 메서드가 갈리는 이유가 여기에 있다(D13).
+     */
+    @Operation(summary = "포인트 조정", description = "포인트를 특정 값으로 설정한다. (P2에서 관리자 전용이 된다)")
+    @PutMapping("/{customerId}")
+    public CustomerResponse updateCustomerPoint(
+            @PathVariable String customerId,
+            @Valid @RequestBody PointUpdateRequest request) {
+
+        return customerService.updateCustomerPoint(customerId, request);
     }
 
     /**

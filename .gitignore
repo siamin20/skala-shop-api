@@ -26,5 +26,8 @@ dist/
 # OS
 .DS_Store
 
-# 설계 문서는 로컬에만 두고 커밋하지 않는다
+# 설계 문서와 작업 규칙은 로컬에만 두고 커밋하지 않는다
 docs/
+AGENTS.md
+CLAUDE.md
+CONTRIBUTING.md

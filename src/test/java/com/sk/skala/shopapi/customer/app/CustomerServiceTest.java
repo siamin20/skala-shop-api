@@ -16,6 +16,7 @@ import com.sk.skala.shopapi.customer.domain.Customer;
 import com.sk.skala.shopapi.customer.domain.CustomerRepository;
 import com.sk.skala.shopapi.customer.dto.CustomerResponse;
 import com.sk.skala.shopapi.customer.dto.PointChargeRequest;
+import com.sk.skala.shopapi.customer.dto.PointUpdateRequest;
 import com.sk.skala.shopapi.customer.dto.SignUpRequest;
 import com.sk.skala.shopapi.global.common.Money;
 import com.sk.skala.shopapi.global.error.BusinessException;
@@ -238,6 +239,71 @@ class CustomerServiceTest {
         void chargeNotFound() {
             assertThatThrownBy(() -> customerService.chargePoint(
                     "nobody", new PointChargeRequest(5_000L)))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getErrorCode())
+                    .isEqualTo(ErrorCode.DATA_NOT_FOUND);
+        }
+    }
+
+    /**
+     * 포인트 조정 검증. (관리자 전용, 명세 552p)
+     *
+     * <p>충전과의 차이를 고정한다. 조정은 이전 잔액을 무시하고 덮어쓰므로 <b>멱등</b>하고,
+     * 충전은 보낼 때마다 더해지므로 멱등하지 않다. 둘을 같은 동작으로 합치면
+     * 한쪽은 잔액 조작 구멍이 되고 다른 쪽은 중복 충전 위험이 된다(D13).
+     */
+    @Nested
+    @DisplayName("포인트 조정")
+    class UpdatePoint {
+
+        @Test
+        @DisplayName("이전 잔액을 무시하고 지정한 값으로 덮어쓴다")
+        void adjustOverwritesBalance() {
+            가입고객("skala01", 10_000);
+
+            CustomerResponse updated = customerService.updateCustomerPoint(
+                    "skala01", new PointUpdateRequest(5_000L));
+
+            // 충전이라면 15,000이 된다. 조정이므로 5,000이어야 한다.
+            assertThat(updated.point()).isEqualTo(5_000);
+        }
+
+        @Test
+        @DisplayName("여러 번 호출해도 결과가 같다")
+        void isIdempotent() {
+            가입고객("skala01", 10_000);
+
+            customerService.updateCustomerPoint("skala01", new PointUpdateRequest(7_000L));
+            customerService.updateCustomerPoint("skala01", new PointUpdateRequest(7_000L));
+            CustomerResponse third = customerService.updateCustomerPoint(
+                    "skala01", new PointUpdateRequest(7_000L));
+
+            // 멱등성. 충전은 세 번 부르면 세 배가 되지만 조정은 그대로다.
+            assertThat(third.point()).isEqualTo(7_000);
+        }
+
+        @Test
+        @DisplayName("0으로 초기화할 수 있다")
+        void allowZero() {
+            가입고객("skala01", 10_000);
+
+            CustomerResponse updated = customerService.updateCustomerPoint(
+                    "skala01", new PointUpdateRequest(0L));
+
+            assertThat(updated.point()).isZero();
+        }
+
+        @Test
+        @DisplayName("음수는 요청 검증에서 걸러진다")
+        void rejectNegative() {
+            assertThat(validator.validate(new PointUpdateRequest(-1L))).isNotEmpty();
+        }
+
+        @Test
+        @DisplayName("없는 고객은 DATA_NOT_FOUND")
+        void updateNotFound() {
+            assertThatThrownBy(() -> customerService.updateCustomerPoint(
+                    "nobody", new PointUpdateRequest(5_000L)))
                     .isInstanceOf(BusinessException.class)
                     .extracting(e -> ((BusinessException) e).getErrorCode())
                     .isEqualTo(ErrorCode.DATA_NOT_FOUND);

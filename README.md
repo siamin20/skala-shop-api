@@ -61,9 +61,6 @@ docker compose -f infra/compose.yaml up -d   # PostgreSQL, Redis
 
 H2만으로 띄우려면 Compose 없이 `./gradlew bootRun`만 실행하면 된다. 기본 프로파일이 `local`이다.
 
-API 문서는 실행 후 `http://localhost:8080/swagger-ui.html`에서 확인한다.
+## API 문서
 
-## 문서
-
-설계 문서(요구사항·도메인 설계·API 명세·동시성 전략·기술 결정 기록·로드맵)는
-저장소에 포함하지 않고 로컬 `docs/`에서 관리한다.
+실행 후 `http://localhost:8080/swagger-ui.html`에서 전체 엔드포인트를 확인하고 직접 호출할 수 있다.
