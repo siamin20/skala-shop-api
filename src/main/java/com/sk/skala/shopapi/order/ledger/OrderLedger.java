@@ -7,7 +7,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.sk.skala.shopapi.customer.domain.Customer;
 import com.sk.skala.shopapi.delivery.domain.DeliveryAddress;
-import com.sk.skala.shopapi.delivery.domain.DeliveryAddressRepository;
 import com.sk.skala.shopapi.global.common.Money;
 import com.sk.skala.shopapi.order.domain.PaymentMethod;
 import com.sk.skala.shopapi.payment.domain.Payment;
@@ -36,23 +35,26 @@ public class OrderLedger {
 
     private final OrderRepository orderRepository;
     private final PaymentRepository paymentRepository;
-    private final DeliveryAddressRepository deliveryAddressRepository;
 
     /**
      * 주문 한 건과 그 결제를 남긴다.
      *
-     * @param lines 주문 항목. (상품, 수량, 결제액, 포인트 사용액)
+     * @param lines    주문 항목. (상품, 수량, 결제액, 포인트 사용액)
+     * @param delivery 이 주문의 배송지. 호출자가 정해서 넘긴다. 없으면 {@code null}
      */
     @Transactional
     public Order record(Customer customer, List<Line> lines, Money pointAmount, Money cardAmount,
-            Money earnedPoint, PaymentMethod method, String approvalNumber, String maskedCard) {
+            Money earnedPoint, PaymentMethod method, String approvalNumber, String maskedCard,
+            DeliveryAddress delivery) {
 
         Money total = pointAmount.plus(cardAmount);
 
-        DeliveryAddress delivery = deliveryAddressRepository
-                .findFirstByCustomer_CustomerIdAndIsDefaultTrue(customer.getCustomerId())
-                .orElse(null);
-
+        // 배송지를 여기서 다시 찾지 않는다. (D42)
+        //
+        // 예전에는 이 자리에서 '기본 배송지'를 조회했다. 배송지가 하나뿐일 때는 맞았지만,
+        // 여러 개를 두면 사용자가 주문서에서 고른 것과 달라진다. 물건은 회사로 가고
+        // 기록은 집으로 남는 상태가 된다. 어느 배송지로 보냈는지는 주문을 받은 쪽이 아는 사실이므로
+        // 원장이 추측하지 않고 넘겨받는다.
         Order order = new Order(customer, total, pointAmount, cardAmount, earnedPoint, delivery);
         for (Line line : lines) {
             order.addLine(new OrderLine(

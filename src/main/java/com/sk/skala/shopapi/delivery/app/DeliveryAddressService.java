@@ -24,7 +24,13 @@ import lombok.RequiredArgsConstructor;
  * 매번 주소를 다시 치게 하는 것보다 골라 쓰게 하는 편이 낫다.
  *
  * <p>기본 배송지는 <b>하나만</b>이다. 여러 개가 기본이면 결제 화면이 어느 것을
- * 골라야 할지 알 수 없다. DB에 부분 유니크 인덱스를 걸어 최종 방어선을 뒀다.
+ * 골라야 할지 알 수 없다.
+ *
+ * <p>이 규칙을 DB 제약으로 걸지는 못했다. PostgreSQL이라면
+ * {@code CREATE UNIQUE INDEX ... WHERE is_default = true} 한 줄이면 되는데
+ * <b>H2가 부분 유니크 인덱스를 지원하지 않는다.</b> DB마다 다른 마이그레이션을 두면
+ * 스키마가 두 갈래로 갈라지는데, 그 비용이 제약 하나의 값어치보다 크다고 봤다.
+ * 그래서 이 서비스가 유일한 방어선이다. 기본을 세울 때 반드시 기존 기본을 내린다.
  */
 @Service
 @RequiredArgsConstructor
@@ -43,6 +49,39 @@ public class DeliveryAddressService {
     public Optional<DeliveryAddressResponse> findDefault(String customerId) {
         return repository.findFirstByCustomer_CustomerIdAndIsDefaultTrue(customerId)
                 .map(DeliveryAddressResponse::from);
+    }
+
+    /**
+     * 결제에 쓸 배송지를 정한다. (D42)
+     *
+     * <p>배송지를 여러 개 둘 수 있게 되면서 <b>"기본 배송지로 보낸다"는 가정이 깨졌다.</b>
+     * 사용자가 주문서에서 회사 주소를 골랐는데 원장에는 집 주소가 남으면,
+     * 물건은 회사로 가고 기록은 집으로 남는다. 어느 쪽이 맞는지 나중에 알 방법이 없다.
+     *
+     * <p>그래서 결제 요청이 배송지를 지정할 수 있게 하고, 그 결정을 여기 한 곳에 모았다.
+     *
+     * @param addressId 주문서에서 고른 저장된 배송지. 없으면 {@code null}
+     * @param request   주문서에서 새로 입력한 배송지. 없으면 {@code null}
+     * @return 이 주문의 배송지. 둘 다 없고 기본 배송지도 없으면 {@code null}
+     */
+    @Transactional
+    public DeliveryAddress resolveForCheckout(
+            String customerId, Long addressId, DeliveryAddressRequest request) {
+
+        // 1. 저장된 것을 골랐다. 그대로 쓴다.
+        //    이때는 저장하지 않는다. 고른 것을 다시 저장하면 값이 덮이거나 사본이 늘어난다.
+        if (addressId != null) {
+            return mine(customerId, addressId);
+        }
+
+        // 2. 새로 입력했다. 저장하고 그것을 쓴다.
+        if (request != null) {
+            Long savedId = saveForCheckout(customerId, request).id();
+            return mine(customerId, savedId);
+        }
+
+        // 3. 아무것도 안 보냈다. 기본 배송지로 둔다.
+        return repository.findFirstByCustomer_CustomerIdAndIsDefaultTrue(customerId).orElse(null);
     }
 
     /**

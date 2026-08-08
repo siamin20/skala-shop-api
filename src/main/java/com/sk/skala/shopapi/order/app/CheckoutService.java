@@ -63,11 +63,16 @@ public class CheckoutService {
     private final CustomerRepository customers;
 
     public CheckoutResponse checkout(String customerId, CheckoutRequest request) {
-        // ── 0. 배송지를 저장한다 ──
+        // ── 0. 이 주문의 배송지를 정한다 ── (D42)
+        //
         // 결제보다 먼저 한다. 결제가 성공했는데 배송지를 못 받으면 어디로 보낼지 모른다.
-        if (request.delivery() != null) {
-            deliveryAddressService.saveForCheckout(customerId, request.delivery());
-        }
+        //
+        // 예전에는 여기서 저장만 하고, 원장은 '기본 배송지'를 따로 찾아 썼다.
+        // 배송지를 여러 개 둘 수 있게 되면서 그 둘이 어긋난다. 회사 주소로 주문했는데
+        // 원장에는 집 주소가 남는 것이다. 이제 여기서 하나로 정하고 그것을 원장까지 넘긴다.
+        com.sk.skala.shopapi.delivery.domain.DeliveryAddress delivery =
+                deliveryAddressService.resolveForCheckout(
+                        customerId, request.deliveryAddressId(), request.delivery());
 
         // ── 1. 금액을 먼저 계산한다 (트랜잭션 밖) ──
         Money total = Money.ZERO;
@@ -94,7 +99,7 @@ public class CheckoutService {
 
             // 무슨 일이 있었는지 남긴다. 이게 없으면 취소해도 흔적이 사라진다. (D43)
             orderLedger.record(customer(customerId), lines, total, Money.ZERO, Money.ZERO,
-                    PaymentMethod.POINT, null, null);
+                    PaymentMethod.POINT, null, null, delivery);
 
             return new CheckoutResponse(orders, total.getAmount(), 0, 0, null, null);
         }
@@ -134,7 +139,7 @@ public class CheckoutService {
             }
 
             orderLedger.record(customer(customerId), lines, usePoint, cardAmount, earned,
-                    PaymentMethod.CARD, approval.approvalNumber(), approval.maskedCard());
+                    PaymentMethod.CARD, approval.approvalNumber(), approval.maskedCard(), delivery);
 
             return new CheckoutResponse(
                     orders, usePoint.getAmount(), cardAmount.getAmount(), earned.getAmount(),

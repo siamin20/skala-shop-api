@@ -31,7 +31,8 @@ import jakarta.validation.constraints.PositiveOrZero;
  * @param paymentMethod 결제 수단. 생략하면 {@code POINT}
  * @param usePoint      적립금 사용액. 카드 결제일 때만 의미가 있다
  * @param card          카드 정보. 저장되지 않는다
- * @param delivery      배송지. 함께 보내면 기본 배송지로 저장된다
+ * @param deliveryAddressId 저장해 둔 배송지 중 고른 것. 지정하면 저장하지 않고 그대로 쓴다
+ * @param delivery      새로 입력한 배송지. 보내면 저장되고 이 주문에 쓰인다
  */
 public record CheckoutRequest(
 
@@ -46,6 +47,15 @@ public record CheckoutRequest(
 
         @Valid
         CardPaymentRequest card,
+
+        /*
+         * 저장해 둔 배송지 중 고른 것. (D42)
+         *
+         * 배송지를 여러 개 둘 수 있으므로 "기본 배송지로 보낸다"고 가정할 수 없다.
+         * 이 값이 있으면 delivery는 보지 않는다. 고른 것을 다시 저장하면
+         * 값이 덮이거나 같은 주소가 하나 더 생긴다.
+         */
+        Long deliveryAddressId,
 
         @Valid
         DeliveryAddressRequest delivery) {
