@@ -5,6 +5,7 @@ import java.util.function.Supplier;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Component;
 
+import com.sk.skala.shopapi.global.concurrency.TransactionRetryExecutor;
 import com.sk.skala.shopapi.global.error.BusinessException;
 import com.sk.skala.shopapi.global.error.ErrorCode;
 
@@ -28,6 +29,17 @@ public class IdempotentExecutor {
     private final IdempotencyStore store;
 
     /**
+     * 낙관적 락 충돌 재시도 계층. (D22)
+     *
+     * <p>재시도가 <b>멱등성 안쪽</b>에 있다. 충돌로 트랜잭션이 롤백되면 그 안에서 저장하던
+     * 멱등성 키도 함께 사라지므로, 다음 시도는 "처음 보는 키"로 다시 실행된다.
+     *
+     * <p>바깥에 두면 각 재시도가 저장된 응답을 먼저 찾는데, 애초에 저장에 실패해서
+     * 재시도하는 상황이라 매번 못 찾는다. 결과는 같지만 조회가 헛돈다.
+     */
+    private final TransactionRetryExecutor retryExecutor;
+
+    /**
      * 멱등하게 실행한다.
      *
      * @throws BusinessException 같은 키의 요청이 처리 중이면 {@link ErrorCode#CONCURRENT_MODIFICATION}
@@ -36,7 +48,8 @@ public class IdempotentExecutor {
             Class<T> responseType, Supplier<T> operation) {
 
         try {
-            return store.execute(key, customerId, request, responseType, operation);
+            return retryExecutor.execute(
+                    () -> store.execute(key, customerId, request, responseType, operation));
         } catch (DataIntegrityViolationException e) {
             throw new BusinessException(
                     ErrorCode.CONCURRENT_MODIFICATION,

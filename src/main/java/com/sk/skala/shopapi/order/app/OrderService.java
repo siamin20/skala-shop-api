@@ -82,13 +82,34 @@ public class OrderService {
      * @throws BusinessException 고객·상품이 없으면 {@link ErrorCode#DATA_NOT_FOUND},
      *                           포인트가 모자라면 {@link ErrorCode#INSUFFICIENT_POINT}
      */
+    /**
+     * 상품을 주문한다.
+     *
+     * <h2>락 획득 순서: Product → Customer</h2>
+     *
+     * <p>순서를 고정하는 것이 데드락 방지의 전부다. 주문은 Product를 먼저 잡고 Customer를
+     * 건드리는데, 취소 경로가 반대로 간다면 두 트랜잭션이 서로가 쥔 행을 기다려 <b>교차
+     * 데드락</b>이 난다. 한 경로만 어긋나도 발생하므로 모든 경로에서 같은 순서를 지킨다.
+     *
+     * <p>고객 조회를 상품보다 먼저 하면 이 순서가 깨진다. 조회 자체는 락을 잡지 않지만,
+     * {@code deductPoint}로 더럽혀진 엔티티는 <b>커밋 시점</b>에 UPDATE가 나가므로
+     * 실제 락 획득 시점은 커밋 순간이다. 그래서 지금 순서가 유지된다.
+     * (D22, {@code docs/04-concurrency.md})
+     */
     @Transactional
     public OrderListResponse placeOrder(String customerId, OrderRequest request) {
+        // 비관적 락. 재고를 읽고 검사하고 차감하는 동안 다른 요청이 끼어들지 못한다.
+        // 락 없이 읽으면 두 요청이 같은 재고를 보고 둘 다 검사를 통과한다.
+        Product product = lockProductOrThrow(request.productId());
         Customer customer = findCustomerOrThrow(customerId);
-        Product product = findProductOrThrow(request.productId());
 
         // 총액은 상품의 현재 가격으로 계산한다.
         Money totalPrice = product.totalPriceOf(request.quantity());
+
+        // 재고를 먼저 줄인다. 포인트를 먼저 차감하면, 재고가 부족해 실패했을 때
+        // 롤백에 기대야 한다. 롤백은 동작하지만 "실패할 것을 먼저 확인한다"는 순서가
+        // 읽는 사람에게 더 분명하다.
+        product.deductStock(request.quantity());
         customer.deductPoint(totalPrice);
 
         // 차감한 금액을 그대로 항목에 넘긴다. 항목이 상품 가격을 다시 읽으면
@@ -118,16 +139,26 @@ public class OrderService {
      * @throws BusinessException 고객·상품·주문이 없으면 {@link ErrorCode#DATA_NOT_FOUND},
      *                           보유 수량보다 많이 취소하면 {@link ErrorCode#INSUFFICIENT_QUANTITY}
      */
+    /**
+     * 주문을 취소한다.
+     *
+     * <p>주문과 <b>같은 순서</b>로 락을 잡는다(Product → Customer). 취소가 재고를
+     * 되돌리므로 여기서도 비관적 락이 필요하고, 순서를 뒤집으면 주문 경로와
+     * 교차 데드락이 난다. (D22)
+     */
     @Transactional
     public OrderListResponse cancelOrder(String customerId, OrderRequest request) {
+        Product product = lockProductOrThrow(request.productId());
         Customer customer = findCustomerOrThrow(customerId);
-        Product product = findProductOrThrow(request.productId());
 
         OrderItem orderItem = orderItemRepository.findByCustomerAndProduct(customer, product)
                 .orElseThrow(() -> new BusinessException(
                         ErrorCode.DATA_NOT_FOUND, "주문 내역이 없습니다: " + product.getName()));
 
         Money refund = orderItem.cancel(request.quantity());
+        // 취소한 수량만큼 재고를 되돌린다. 되돌리지 않으면 취소가 반복될수록
+        // 팔지도 않은 재고가 사라진다.
+        product.restoreStock(request.quantity());
         customer.refundPoint(refund);
 
         if (orderItem.isEmpty()) {
@@ -159,8 +190,14 @@ public class OrderService {
                         ErrorCode.DATA_NOT_FOUND, "고객을 찾을 수 없습니다: " + customerId));
     }
 
-    private Product findProductOrThrow(Long productId) {
-        return productRepository.findById(productId)
+    /**
+     * 상품 행을 비관적 락으로 잡고 조회한다.
+     *
+     * <p>재고를 바꾸는 경로에서만 쓴다. 단순 조회까지 락을 잡으면 상품 목록을 보는
+     * 사용자들이 주문 처리를 기다리게 된다.
+     */
+    private Product lockProductOrThrow(Long productId) {
+        return productRepository.findByIdForUpdate(productId)
                 .orElseThrow(() -> new BusinessException(
                         ErrorCode.DATA_NOT_FOUND, "상품을 찾을 수 없습니다: " + productId));
     }
