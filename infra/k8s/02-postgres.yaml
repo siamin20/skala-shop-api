@@ -1,0 +1,88 @@
+# PostgreSQL
+#
+# Deployment가 아니라 StatefulSet이다. (D24)
+#
+# Deployment는 파드를 아무 순서로나 만들고 지우며 이름도 매번 바뀐다.
+# 볼륨도 모든 파드가 하나를 공유한다. 상태를 가진 DB에는 맞지 않는다.
+# StatefulSet은 이름이 고정되고(postgres-0), 파드마다 자기 볼륨을 갖는다.
+#
+# 운영에서는 관리형 DB(RDS, Cloud SQL)를 쓰는 편이 낫다. 백업, 장애 복구,
+# 버전 업그레이드를 직접 감당하지 않아도 되기 때문이다.
+# 여기서는 클러스터 하나로 전체를 돌려보기 위해 안에 둔다.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: skala-shop
+spec:
+  # clusterIP: None — 헤드리스 서비스.
+  # StatefulSet의 파드에 고정된 DNS 이름을 주기 위해 필요하다.
+  clusterIP: None
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: skala-shop
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          env:
+            - name: POSTGRES_DB
+              value: skalashop
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: shop-api-secret
+                  key: DATABASE_USERNAME
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: shop-api-secret
+                  key: DATABASE_PASSWORD
+            # 기본 마운트 경로 바로 아래에 데이터를 두면 lost+found 때문에
+            # 초기화가 실패한다. 하위 디렉터리를 지정해 피한다.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "skalashop", "-d", "skalashop"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi

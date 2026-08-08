@@ -12,6 +12,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -29,7 +30,7 @@ import lombok.NoArgsConstructor;
  * <p>비밀번호는 BCrypt 해시로만 저장한다(D5). 이 클래스는 해싱을 직접 하지 않고
  * 이미 해시된 값을 받는다. 암호화 방식을 아는 것은 도메인이 아니라 인증 서비스의 몫이다.
  *
- * <p>{@code @Version}을 이용한 낙관적 락은 P4에서 추가한다.
+ * <p>{@code @Version}을 이용한 낙관적 락으로 갱신 유실을 막는다. (D22)
  */
 @Entity
 @Table(name = "customer")
@@ -65,6 +66,28 @@ public class Customer {
     @Embedded
     @AttributeOverride(name = "amount", column = @Column(name = "customer_point", nullable = false))
     private Money point;
+
+    /**
+     * 낙관적 락 버전. (D22)
+     *
+     * <p>Hibernate가 이 값을 {@code UPDATE ... WHERE version = ?}에 넣어 갱신하고,
+     * 바뀐 행이 0이면 <b>"내가 읽은 뒤 누군가 먼저 바꿨다"</b>고 판단해 예외를 던진다.
+     * 이게 없으면 두 요청이 같은 잔액을 읽고 각자 계산해 덮어써 <b>갱신 유실</b>이 난다.
+     *
+     * <pre>
+     *   요청A: 100만원 읽음 → 1만원 차감 → 99만원 저장
+     *   요청B: 100만원 읽음 → 2만원 차감 → 98만원 저장   ← A의 차감이 사라진다
+     * </pre>
+     *
+     * <p>비관적 락이 아니라 낙관적 락인 이유는 <b>경합이 드물기 때문</b>이다.
+     * 포인트는 본인만 바꾼다. 충돌은 같은 사람이 더블클릭하거나 재시도할 때만 생긴다.
+     * 드문 충돌을 위해 모든 요청에 락 대기를 걸면 처리량만 깎인다.
+     *
+     * <p>필드에 직접 접근할 일이 없어 Getter를 열지 않는다. Hibernate가 관리한다.
+     */
+    @Version
+    @Column(name = "version", nullable = false)
+    private long version;
 
     /**
      * 토큰 버전. 로그아웃하면 올라간다. (D25)
@@ -146,6 +169,21 @@ public class Customer {
     public void refundPoint(Money amount) {
         this.point = point.plus(amount);
     }
+
+    /**
+     * 가진 만큼만 차감한다. 적립 회수에 쓴다. (D31)
+     *
+     * <p>{@code deductPoint}와 다르다. 잔액이 모자라면 예외를 던지는 대신
+     * 남은 만큼만 가져간다.
+     *
+     * <p>이렇게 하는 이유: 적립받은 포인트를 이미 다 써버린 뒤에 취소하는 경우가 있다.
+     * 그때 예외를 던지면 <b>취소 자체가 불가능해진다.</b> 사용자는 환급도 못 받고
+     * 상품도 못 쓰는 상태에 갇힌다. 회수하지 못한 만큼은 손실로 받아들이는 편이 낫다.
+     */
+    public void deductPointUpTo(Money amount) {
+        this.point = this.point.isLessThan(amount) ? Money.ZERO : this.point.minus(amount);
+    }
+
 
     /**
      * 포인트를 충전한다.

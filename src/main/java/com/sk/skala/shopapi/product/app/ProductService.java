@@ -16,6 +16,8 @@ import com.sk.skala.shopapi.product.domain.Product;
 import com.sk.skala.shopapi.product.domain.ProductRepository;
 import com.sk.skala.shopapi.product.dto.ProductCreateRequest;
 import com.sk.skala.shopapi.product.dto.ProductResponse;
+import com.sk.skala.shopapi.product.dto.CategoryResponse;
+import com.sk.skala.shopapi.product.dto.ProductSort;
 import com.sk.skala.shopapi.product.dto.ProductUpdateRequest;
 
 import lombok.RequiredArgsConstructor;
@@ -50,9 +52,74 @@ public class ProductService {
      * @param size 페이지 크기
      */
     public PageResponse<ProductResponse> getProducts(int page, int size) {
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.ASC, "id"));
-        Page<Product> products = productRepository.findAll(pageable);
+        return getProducts(page, size, ProductSort.LATEST);
+    }
+
+    /**
+     * 정렬 기준을 지정해 상품을 조회한다. (D33)
+     *
+     * <p>판매량순만 별도 쿼리다. 나머지는 컬럼 정렬로 끝나지만 판매량은
+     * 주문 데이터를 집계해야 알 수 있다.
+     */
+    public PageResponse<ProductResponse> getProducts(int page, int size, ProductSort sort) {
+        return getProducts(page, size, sort, null, null);
+    }
+
+    /**
+     * 카테고리로 거르고 정렬해 조회한다. (D33, D35)
+     *
+     * <p>거르기와 페이지 자르기를 <b>같은 곳에서</b> 한다. 화면이 거르면
+     * "10개 보기"인데 3개만 있는 페이지가 나온다.
+     *
+     * <p>판매량순은 카테고리 필터와 함께 쓸 수 없다. 집계 쿼리에 조건을 더하려면
+     * 쿼리를 하나 더 만들어야 하는데, 두 기능을 함께 쓰는 동선이 흔하지 않아
+     * <b>일부러 지원하지 않는다.</b> 조용히 무시하지 않고 카테고리 필터를 우선한다.
+     */
+    public PageResponse<ProductResponse> getProducts(int page, int size, ProductSort sort,
+            String category, String subcategory) {
+
+        boolean filtered = category != null && !category.isBlank();
+
+        if (filtered) {
+            Pageable pageable = PageRequest.of(page, size, orderOf(sort));
+            Page<Product> products = (subcategory == null || subcategory.isBlank())
+                    ? productRepository.findByCategory(category, pageable)
+                    : productRepository.findByCategoryAndSubcategory(category, subcategory, pageable);
+            return PageResponse.of(products, ProductResponse::from);
+        }
+
+        if (sort == ProductSort.BEST) {
+            // 정렬이 쿼리 안에 들어 있으므로 Pageable에 Sort를 넣지 않는다.
+            // 넣으면 order by가 두 번 붙어 집계 결과가 다시 뒤집힌다.
+            return PageResponse.of(
+                    productRepository.findAllOrderBySales(PageRequest.of(page, size)),
+                    ProductResponse::from);
+        }
+
+        Page<Product> products = productRepository.findAll(PageRequest.of(page, size, orderOf(sort)));
         return PageResponse.of(products, ProductResponse::from);
+    }
+
+    /** 등록된 카테고리 목록. 화면의 탭을 이 값으로 만든다. */
+    public java.util.List<CategoryResponse> getCategories() {
+        java.util.Map<String, java.util.List<String>> grouped = new java.util.LinkedHashMap<>();
+        for (Object[] row : productRepository.findCategories()) {
+            grouped.computeIfAbsent((String) row[0], k -> new java.util.ArrayList<>())
+                    .add((String) row[1]);
+        }
+        return grouped.entrySet().stream()
+                .map(e -> new CategoryResponse(e.getKey(), e.getValue()))
+                .toList();
+    }
+
+    private Sort orderOf(ProductSort sort) {
+        return switch (sort) {
+            case PRICE_ASC -> Sort.by(Sort.Direction.ASC, "price.amount");
+            case PRICE_DESC -> Sort.by(Sort.Direction.DESC, "price.amount");
+            case NAME -> Sort.by(Sort.Direction.ASC, "name");
+            // 최신 등록순. id가 IDENTITY라 등록 순서와 같다.
+            default -> Sort.by(Sort.Direction.DESC, "id");
+        };
     }
 
     /**

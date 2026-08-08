@@ -19,6 +19,12 @@ import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.sk.skala.shopapi.customer.domain.Customer;
+import com.sk.skala.shopapi.customer.domain.CustomerRepository;
+import com.sk.skala.shopapi.customer.domain.Role;
+import com.sk.skala.shopapi.global.common.Money;
+import com.sk.skala.shopapi.support.WithMockCustomer;
+
 /**
  * 인가 규칙 검증.
  *
@@ -43,6 +49,19 @@ class SecurityRuleTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private CustomerRepository customerRepository;
+
+    @org.junit.jupiter.api.BeforeEach
+    void setUp() {
+        if (customerRepository.findById("skala01").isEmpty()) {
+            customerRepository.save(new Customer("skala01", "$2a$10$h", Money.of(1_000_000)));
+        }
+        if (customerRepository.findById("skala02").isEmpty()) {
+            customerRepository.save(new Customer("skala02", "$2a$10$h", Money.of(1_000_000)));
+        }
+    }
 
     @Nested
     @DisplayName("공개 - 로그인 없이 접근할 수 있어야 한다")
@@ -103,6 +122,7 @@ class SecurityRuleTest {
         @DisplayName("포인트 충전")
         void chargePoint() throws Exception {
             mockMvc.perform(post("/api/customers/skala01/points")
+                            .header("Idempotency-Key", java.util.UUID.randomUUID().toString())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("{\"amount\":5000}"))
                     .andExpect(status().isUnauthorized());
@@ -171,9 +191,54 @@ class SecurityRuleTest {
         }
     }
 
+    /**
+     * 본인 확인. 필터 체인이 판단할 수 없는 영역이다.
+     *
+     * <p>{@code SecurityConfig}는 경로 패턴만 보므로 "경로의 아이디가 요청자 본인인가"를
+     * 가릴 수 없다. {@code AccessGuard}가 없으면 <b>로그인한 아무나 남의 주문 내역을 보고
+     * 남의 계정을 탈퇴시킬 수 있다.</b>
+     */
+    @Nested
+    @DisplayName("본인 확인 - 남의 자원에는 403")
+    @WithMockCustomer("skala01")
+    class OwnershipCheck {
+
+        @Test
+        @DisplayName("남의 주문 내역 조회")
+        void othersOrders() throws Exception {
+            mockMvc.perform(get("/api/customers/skala02"))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
+        }
+
+        @Test
+        @DisplayName("남의 계정에 포인트 충전")
+        void othersCharge() throws Exception {
+            mockMvc.perform(post("/api/customers/skala02/points")
+                            .header("Idempotency-Key", java.util.UUID.randomUUID().toString())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"amount\":5000}"))
+                    .andExpect(status().isForbidden());
+        }
+
+        @Test
+        @DisplayName("남의 계정 탈퇴")
+        void othersDelete() throws Exception {
+            mockMvc.perform(delete("/api/customers/skala02"))
+                    .andExpect(status().isForbidden());
+        }
+
+        @Test
+        @DisplayName("본인 자원에는 접근할 수 있다")
+        void ownResourceAllowed() throws Exception {
+            mockMvc.perform(get("/api/customers/skala01"))
+                    .andExpect(status().isOk());
+        }
+    }
+
     @Nested
     @DisplayName("관리자 - 관리 기능에 접근할 수 있다")
-    @WithMockUser(username = "admin01", roles = "ADMIN")
+    @WithMockCustomer(value = "admin01", role = Role.ADMIN)
     class AdminCanManage {
 
         @Test
@@ -189,6 +254,13 @@ class SecurityRuleTest {
         @DisplayName("전체 고객 목록 조회")
         void customerList() throws Exception {
             mockMvc.perform(get("/api/customers")).andExpect(status().isOk());
+        }
+
+        @Test
+        @DisplayName("고객 지원을 위해 다른 고객의 주문 내역을 볼 수 있다")
+        void canViewAnyCustomer() throws Exception {
+            // 문의가 들어왔을 때 관리자가 확인할 수 없으면 지원 업무가 불가능하다.
+            mockMvc.perform(get("/api/customers/skala01")).andExpect(status().isOk());
         }
     }
 }

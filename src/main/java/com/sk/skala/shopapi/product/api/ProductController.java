@@ -19,6 +19,8 @@ import com.sk.skala.shopapi.global.common.PageResponse;
 import com.sk.skala.shopapi.product.app.ProductService;
 import com.sk.skala.shopapi.product.dto.ProductCreateRequest;
 import com.sk.skala.shopapi.product.dto.ProductResponse;
+import com.sk.skala.shopapi.product.dto.CategoryResponse;
+import com.sk.skala.shopapi.product.dto.ProductSort;
 import com.sk.skala.shopapi.product.dto.ProductUpdateRequest;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -73,14 +75,28 @@ public class ProductController {
      * @param page 페이지 번호 (0부터)
      * @param size 페이지 크기 (1~100)
      */
-    @Operation(summary = "상품 목록 조회", description = "페이지 단위로 상품을 조회한다.")
+    @Operation(
+            summary = "상품 목록 조회",
+            description = "페이지 단위로 상품을 조회한다. sort로 정렬 기준을 지정한다.")
     @GetMapping
     public PageResponse<ProductResponse> getProducts(
             @RequestParam(defaultValue = "0") @Min(value = 0, message = "페이지 번호는 0 이상이어야 합니다") int page,
             @RequestParam(defaultValue = "10") @Min(value = 1, message = "페이지 크기는 1 이상이어야 합니다")
-            @Max(value = 100, message = "페이지 크기는 100을 넘을 수 없습니다") int size) {
+            @Max(value = 100, message = "페이지 크기는 100을 넘을 수 없습니다") int size,
+            // 열거형으로 받는다. 문자열 정렬 파라미터를 그대로 열면 클라이언트가
+            // 아무 필드로나 정렬할 수 있고, 인덱스 없는 필드를 보내면 전체 스캔이 돈다. (D33)
+            @RequestParam(defaultValue = "LATEST") ProductSort sort,
+            @RequestParam(required = false) String category,
+            @RequestParam(required = false) String subcategory) {
 
-        return productService.getProducts(page, size);
+        return productService.getProducts(page, size, sort, category, subcategory);
+    }
+
+    /** 등록된 카테고리 목록. 화면이 탭을 하드코딩하지 않게 서버가 알려준다. (D35) */
+    @Operation(summary = "카테고리 목록", description = "등록된 대분류와 소분류를 반환한다.")
+    @GetMapping("/categories")
+    public java.util.List<CategoryResponse> getCategories() {
+        return productService.getCategories();
     }
 
     /** 상품 하나를 조회한다. 없으면 404가 나간다. */

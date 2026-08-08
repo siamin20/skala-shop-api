@@ -53,6 +53,15 @@ public enum ErrorCode {
      */
     DATA_IN_USE(HttpStatus.CONFLICT, "다른 데이터가 참조하고 있어 삭제할 수 없습니다"),
 
+    /**
+     * 멱등성 키를 잘못 사용했다. (D20)
+     *
+     * <p>남이 쓴 키를 재사용했거나, 같은 키로 내용이 다른 요청을 보낸 경우다.
+     * 후자를 막지 않으면 "5,000원 충전"에 쓴 키로 "50,000원 충전"을 보내
+     * 실행되지 않은 채 성공 응답만 받아낼 수 있다.
+     */
+    IDEMPOTENCY_KEY_REUSED(HttpStatus.CONFLICT, "이미 사용된 멱등성 키입니다"),
+
     /** 보유 포인트가 주문 금액보다 적다. */
     INSUFFICIENT_POINT(HttpStatus.CONFLICT, "포인트가 부족합니다"),
 
@@ -83,6 +92,23 @@ public enum ErrorCode {
     LOCK_TIMEOUT(HttpStatus.CONFLICT, "요청이 몰려 처리하지 못했습니다. 다시 시도해 주세요"),
 
     /** 어디에도 해당하지 않는 서버 오류. 상세 내용은 응답에 노출하지 않고 로그에만 남긴다. */
+    /**
+     * 카드사가 승인을 거절했다. (D32)
+     *
+     * <p>402가 아니라 402를 쓴다. 402 Payment Required는 원래 이 용도로 예약된 코드인데
+     * 오랫동안 쓰이지 않아 클라이언트가 다루지 못하는 경우가 있다. 그래도 의미가
+     * 정확히 맞으므로 쓰고, 응답 본문의 code로 구분할 수 있게 한다.
+     */
+    PAYMENT_DECLINED(HttpStatus.PAYMENT_REQUIRED, "카드 승인이 거절되었습니다"),
+
+    /**
+     * 카드사에 닿지 못했다.
+     *
+     * <p>거절과 구분한다. 거절은 카드를 바꿔야 하고, 통신 실패는 다시 시도하면 된다.
+     * 같은 코드로 묶으면 사용자가 멀쩡한 카드를 버리게 된다.
+     */
+    PAYMENT_FAILED(HttpStatus.BAD_GATEWAY, "결제 처리 중 문제가 발생했습니다"),
+
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 오류가 발생했습니다");
 
     private final HttpStatus status;

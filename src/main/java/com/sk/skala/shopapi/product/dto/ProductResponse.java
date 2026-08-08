@@ -17,7 +17,8 @@ import com.sk.skala.shopapi.product.domain.Product;
  * @param name  상품명
  * @param price 판매 가격. 원 단위 정수
  */
-public record ProductResponse(Long id, String name, long price) {
+public record ProductResponse(Long id, String name, long price, int stock,
+        String category, String subcategory) {
 
     /**
      * 엔티티를 응답으로 옮긴다.
@@ -32,6 +33,11 @@ public record ProductResponse(Long id, String name, long price) {
         return new ProductResponse(
                 product.getId(),
                 product.getName(),
-                product.getPrice().getAmount());
+                product.getPrice().getAmount(),
+                // 재고를 응답에 넣는다. 클라이언트가 품절을 미리 보여주지 못하면
+                // 사용자는 주문 버튼을 누른 뒤에야 실패를 알게 된다.
+                product.getStock(),
+                product.getCategory(),
+                product.getSubcategory());
     }
 }

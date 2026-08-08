@@ -83,6 +83,19 @@ public class OrderItem {
     private Money totalAmount;
 
     /**
+     * 결제 총액 중 포인트로 낸 금액. (D31)
+     *
+     * <p>나머지는 카드로 낸 것이다. 취소할 때 <b>포인트로 얼마를 돌려주고 카드로 얼마를
+     * 환불할지</b> 나누려면 이 값이 필요하다. 없으면 전액을 포인트로 돌려주게 되어
+     * 카드로 낸 돈만큼 포인트가 늘어난다.
+     *
+     * <p>명세의 기본 동작(포인트 전액 결제)에서는 {@code totalAmount}와 같다.
+     */
+    @Embedded
+    @AttributeOverride(name = "amount", column = @Column(name = "used_point", nullable = false))
+    private Money usedPoint;
+
+    /**
      * 새 주문 항목을 만든다.
      *
      * <p>결제 총액은 인자로 받지 않고 상품에서 그 시점 가격을 읽어 계산한다.
@@ -94,11 +107,27 @@ public class OrderItem {
      * @throws IllegalArgumentException 수량이 1 미만인 경우
      */
     public OrderItem(Customer customer, Product product, int quantity) {
+        // 명세의 기본 동작. 전액을 포인트로 낸다.
+        this(customer, product, quantity, product.totalPriceOf(quantity),
+                product.totalPriceOf(quantity));
+    }
+
+    /**
+     * 결제 내역을 지정해 항목을 만든다. (D31)
+     *
+     * @param paidAmount 결제 총액
+     * @param usedPoint  그중 포인트로 낸 금액
+     */
+    public OrderItem(Customer customer, Product product, int quantity,
+            Money paidAmount, Money usedPoint) {
+
         validateQuantity(quantity);
+        validatePayment(paidAmount, usedPoint);
         this.customer = customer;
         this.product = product;
         this.quantity = quantity;
-        this.totalAmount = product.totalPriceOf(quantity);
+        this.totalAmount = paidAmount;
+        this.usedPoint = usedPoint;
     }
 
     /**
@@ -113,7 +142,13 @@ public class OrderItem {
      * @throws IllegalArgumentException 수량이 1 미만이거나 누적 결과가 범위를 넘는 경우
      */
     public void increase(int quantity, Money paidAmount) {
+        increase(quantity, paidAmount, paidAmount);
+    }
+
+    /** 포인트 사용액을 함께 누적한다. (D31) */
+    public void increase(int quantity, Money paidAmount, Money usedPoint) {
         validateQuantity(quantity);
+        validatePayment(paidAmount, usedPoint);
         try {
             // 단순 덧셈이면 int 범위를 넘을 때 음수로 뒤집혀 "수량은 항상 1 이상"이라는 불변식이 깨진다.
             // addExact는 넘칠 때 조용히 뒤집지 않고 예외를 던진다.
@@ -123,6 +158,7 @@ public class OrderItem {
                     "주문 수량이 너무 큽니다: %d + %d".formatted(this.quantity, quantity));
         }
         this.totalAmount = this.totalAmount.plus(paidAmount);
+        this.usedPoint = this.usedPoint.plus(usedPoint);
     }
 
     /**
@@ -147,7 +183,7 @@ public class OrderItem {
      * @throws IllegalArgumentException 취소 수량이 1 미만인 경우
      * @throws BusinessException        보유 수량보다 많이 취소하면 {@link ErrorCode#INSUFFICIENT_QUANTITY}
      */
-    public Money cancel(int quantity) {
+    public Refund cancel(int quantity) {
         validateQuantity(quantity);
         if (this.quantity < quantity) {
             throw new BusinessException(
@@ -155,13 +191,42 @@ public class OrderItem {
                     "취소 요청 %d개, 주문 수량 %d개".formatted(quantity, this.quantity));
         }
 
-        Money refund = (quantity == this.quantity)
-                ? this.totalAmount
-                : this.totalAmount.proportion(quantity, this.quantity);
+        boolean all = (quantity == this.quantity);
+
+        Money refund = all ? this.totalAmount : this.totalAmount.proportion(quantity, this.quantity);
+        Money pointBack = all ? this.usedPoint : this.usedPoint.proportion(quantity, this.quantity);
 
         this.totalAmount = this.totalAmount.minus(refund);
+        this.usedPoint = this.usedPoint.minus(pointBack);
         this.quantity -= quantity;
-        return refund;
+
+        return new Refund(refund, pointBack);
+    }
+
+    /**
+     * 환급 내역. (D31)
+     *
+     * @param total        총 환급액
+     * @param pointPortion 그중 포인트로 돌려줄 금액. 나머지는 카드로 환불된다
+     */
+    public record Refund(Money total, Money pointPortion) {
+
+        /** 카드로 환불할 금액. */
+        public Money cardPortion() {
+            return total.minus(pointPortion);
+        }
+    }
+
+    private static void validatePayment(Money paidAmount, Money usedPoint) {
+        if (usedPoint == null || paidAmount == null) {
+            throw new IllegalArgumentException("결제 금액은 null일 수 없습니다");
+        }
+        if (paidAmount.isLessThan(usedPoint)) {
+            // 넘으면 거스름돈이 포인트로 생긴다. DB의 CHECK 제약이 최종 방어선이지만
+            // 여기서 먼저 막아야 무엇이 잘못됐는지 알 수 있다.
+            throw new IllegalArgumentException(
+                    "포인트 사용액이 결제 총액을 넘습니다: %s > %s".formatted(usedPoint, paidAmount));
+        }
     }
 
     /**

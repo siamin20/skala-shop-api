@@ -1,0 +1,61 @@
+# Testcontainers 통합 테스트 프로파일. (D21)
+#
+# 접속 정보(url/username/password)는 여기에 없다. 컨테이너가 뜰 때마다 포트가 달라지므로
+# PostgresIntegrationTest의 @DynamicPropertySource가 실행 시점에 채운다.
+#
+# 이 파일이 정하는 것은 "운영과 같은 방식으로 스키마를 다루는가"다.
+# 그래야 이 테스트가 운영에서 벌어질 일을 미리 보여준다.
+
+spring:
+  # local 프로파일이 켜지지 않도록 이 프로파일만 활성화한다.
+  # 켜지면 application.yml의 local 블록이 H2 datasource로 덮어써서
+  # 컨테이너를 띄워놓고 정작 H2에 붙는 일이 벌어진다.
+  datasource:
+    driver-class-name: org.postgresql.Driver
+
+    hikari:
+      data-source-properties:
+        # 운영(prod)과 같은 방식으로 타임아웃을 건다. 다르게 두면 동시성 테스트가
+        # 운영에서 벌어질 일을 보여주지 못한다. (D22)
+        #
+        # 값만 3초에서 1초로 줄였다. 테스트마다 3초를 그대로 기다리면 느려진다.
+        options: "-c lock_timeout=1000 -c statement_timeout=10000"
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    # 테스트마다 컨테이너를 새로 만들지 않고 하나를 공유하므로,
+    # 마이그레이션은 첫 컨텍스트에서 한 번만 적용되고 이후에는 건너뛴다.
+
+  jpa:
+    hibernate:
+      # 운영(prod)과 같은 validate를 쓴다. create-drop으로 두면 Hibernate가 만든
+      # 스키마를 Hibernate가 검사하는 셈이라 항상 통과해서 아무것도 검증하지 못한다.
+      # validate여야 "마이그레이션이 만든 스키마와 엔티티가 맞는가"를 본다. (D16)
+      ddl-auto: validate
+    properties:
+      hibernate:
+        show_sql: false
+
+  # 관리자 계정 자동 생성을 끈다. 테스트가 직접 필요한 데이터만 넣는다.
+shop:
+  admin:
+    id:
+    password:
+
+  jwt:
+    # 테스트용 시크릿. 운영 프로파일에는 이 블록이 없으므로
+    # JWT_SECRET을 주지 않으면 기동에 실패한다. (D26)
+    secret: test-only-jwt-secret-key-at-least-32-bytes-long
+    cookie-secure: false
+
+  payment:
+    # 테스트용 암호화 키. 운영에는 이 블록이 없으므로 키를 주지 않으면 기동에 실패한다. (D26, D32)
+    encryption-key: test-only-card-encryption-key-32-bytes-long
+
+logging:
+  level:
+    # 컨테이너 기동 로그가 테스트 출력을 가리지 않게 줄인다.
+    # 실패를 분석할 때는 이 줄을 지우면 전체 로그가 나온다.
+    org.testcontainers: WARN
+    com.github.dockerjava: WARN

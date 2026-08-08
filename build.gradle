@@ -135,9 +135,53 @@ dependencies {
 
     // Gradle이 JUnit 5 테스트를 실행할 때 필요한 런처.
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+    // Prometheus 노출 형식. Actuator는 메트릭을 모으기만 하고 내보내지는 못한다.
+    // 이 레지스트리가 있어야 /actuator/prometheus가 생긴다. (D28)
+    runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
+
+    // Redis. 선착순 이벤트의 원자 카운터 비교 대상이다. (D23)
+    //
+    // DB 락과 무엇이 다른지 재보려고 넣는다. Redis는 단일 스레드로 명령을 처리해서
+    // DECR 하나로 원자적 감소가 된다. 락을 걸 필요가 없다는 것이 요점이다.
+    //
+    // 없어도 애플리케이션은 뜬다. 연결이 지연 생성이라 Redis 전략을 실제로 고를 때만
+    // 접속한다. 기본 전략은 DB 쪽이라 Redis 없이도 서비스가 동작한다.
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+
+    // Testcontainers. 테스트가 실제 PostgreSQL 컨테이너를 띄워 그 위에서 돈다. (D21)
+    //
+    // 나머지 테스트는 H2(MODE=PostgreSQL)를 쓴다. 빠르지만 PostgreSQL 흉내일 뿐이라
+    // 두 DB의 차이가 드러나지 않는다. 실제로 마이그레이션 하나가 H2에서는 통과하고
+    // PostgreSQL에서는 기동조차 못 하는 상태였는데, H2만 쓰는 동안에는 아무도 몰랐다.
+    //
+    // 버전은 Spring Boot BOM이 관리하므로 적지 않는다.
+    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+    testImplementation 'org.testcontainers:junit-jupiter'
+    testImplementation 'org.testcontainers:postgresql'
 }
 
 tasks.named('test') {
     // JUnit 4가 아니라 JUnit 5(Jupiter)로 실행한다.
     useJUnitPlatform()
+
+    // Testcontainers가 쓰는 Docker API 버전. (D21)
+    //
+    // Testcontainers 1.19.8이 쓰는 docker-java 3.3.6은 기본 API 버전이 1.32인데,
+    // Docker Engine 29부터 1.44 미만 요청을 거부한다. 그대로 두면 Docker가 멀쩡히
+    // 떠 있는데도 "Could not find a valid Docker environment"로 실패한다.
+    // 소켓 경로나 권한 문제로 오해하기 딱 좋은 메시지라 원인을 찾는 데 시간이 걸린다.
+    //
+    // docker-java는 시스템 프로퍼티 `api.version`을 읽는다.
+    // `DOCKER_API_VERSION` 환경변수만 넣어봤을 때는 반영되지 않아 실패가 그대로 재현됐다.
+    //
+    // 1.44는 Docker 25(2024-01)부터 지원한다. 더 낮은 Docker를 쓰는 환경은
+    // DOCKER_API_VERSION 환경변수로 덮어쓸 수 있게 열어둔다.
+    systemProperty 'api.version', System.getenv('DOCKER_API_VERSION') ?: '1.44'
+
+    // 통합 테스트는 컨테이너 기동을 기다리므로 어느 테스트가 도는 중인지 보이게 한다.
+    testLogging {
+        events 'skipped', 'failed'
+        exceptionFormat 'short'
+    }
 }

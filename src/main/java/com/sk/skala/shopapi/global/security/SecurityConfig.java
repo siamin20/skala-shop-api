@@ -80,11 +80,27 @@ public class SecurityConfig {
                         // 회원가입과 로그인은 인증 전에 호출되므로 열어야 한다.
                         .requestMatchers(HttpMethod.POST, "/api/customers").permitAll()
                         .requestMatchers("/api/auth/login", "/api/auth/refresh").permitAll()
+                        // 명세 536p의 로그인 경로. 인증 전에 호출되므로 열어야 한다. (D27)
+                        .requestMatchers(HttpMethod.POST, "/api/customers/login").permitAll()
                         // 상품 조회는 비로그인 방문자도 볼 수 있어야 쇼핑몰이 성립한다.
-                        .requestMatchers(HttpMethod.GET, "/api/products", "/api/products/*").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/products", "/api/products/*",
+                                "/api/products/categories").permitAll()
+
+                        // 선착순 이벤트 조회는 공개다. 비로그인 방문자가 어떤 이벤트가
+                        // 열리는지 볼 수 없으면 참여할 마음이 생기지 않는다. (D23)
+                        .requestMatchers(HttpMethod.GET, "/api/flash-sales", "/api/flash-sales/*").permitAll()
                         // 문서와 헬스체크. 운영 도구가 인증 없이 접근한다.
                         .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
-                        .requestMatchers("/actuator/health").permitAll()
+                        // 쿠버네티스 probe는 인증 없이 호출된다. kubelet은 토큰이 없다.
+                        // 하위 경로까지 여는 이유는 probes.enabled로 health/liveness와
+                        // health/readiness가 생기기 때문이다. (D24)
+                        .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
+                        .requestMatchers("/actuator/info").permitAll()
+
+                        // 모의 카드사. 실제로는 다른 회사의 다른 서버라 우리 인증 체계가
+                        // 적용될 자리가 아니다. 막아두면 우리 서버가 자기 자신을 부를 때 401을 받는다.
+                        // 실제 배포에서는 이 컨트롤러를 아예 뺀다. (D32)
+                        .requestMatchers("/mock-issuer/**").permitAll()
 
                         // ── 관리자 전용 ──
                         .requestMatchers(HttpMethod.POST, "/api/products").hasRole(Role.ADMIN.name())
@@ -93,6 +109,17 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/customers").hasRole(Role.ADMIN.name())
                         // 잔액을 임의 값으로 덮어쓰는 동작이라 본인에게도 열지 않는다. (D13)
                         .requestMatchers(HttpMethod.PUT, "/api/customers/*").hasRole(Role.ADMIN.name())
+
+                        // 명세 536p 경로에는 경로 변수가 없어 위 패턴에 걸리지 않는다.
+                        // 따로 적지 않으면 anyRequest로 흘러가 로그인한 일반 고객이
+                        // 상품을 고치고 지울 수 있다. (D27)
+                        .requestMatchers(HttpMethod.PUT, "/api/products").hasRole(Role.ADMIN.name())
+                        .requestMatchers(HttpMethod.DELETE, "/api/products").hasRole(Role.ADMIN.name())
+                        .requestMatchers(HttpMethod.PUT, "/api/customers").hasRole(Role.ADMIN.name())
+
+                        // 메트릭은 관리자만 본다. 열어두면 엔드포인트 목록과 호출 빈도가
+                        // 드러나 공격 대상을 고르는 단서가 된다. (D28)
+                        .requestMatchers("/actuator/**").hasRole(Role.ADMIN.name())
 
                         ;
 
