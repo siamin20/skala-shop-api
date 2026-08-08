@@ -69,7 +69,13 @@ FROM eclipse-temurin:21-jre-alpine
 
 # 비루트 사용자. 기본값인 root로 두면 컨테이너 격리가 뚫렸을 때
 # 호스트 자원에 손댈 여지가 커진다. 애플리케이션에 root가 필요할 이유가 없다.
-RUN addgroup -S app && adduser -S app -G app
+#
+# UID를 숫자로 못 박는다. 이름만 주면 쿠버네티스가 runAsNonRoot를 검증하지 못한다.
+#   "container has runAsNonRoot and image has non-numeric user (app),
+#    cannot verify user is non-root"
+# 쿠버네티스는 이미지 안의 /etc/passwd를 읽지 않아서 이름이 어떤 UID인지 알 수 없다.
+# 실제로 클러스터에 올려보고 나서야 알았다. compose로는 재현되지 않는다.
+RUN addgroup -g 10001 -S app && adduser -u 10001 -S app -G app
 
 WORKDIR /app
 
@@ -80,7 +86,8 @@ COPY --from=extractor --chown=app:app /extract/spring-boot-loader/ ./
 COPY --from=extractor --chown=app:app /extract/snapshot-dependencies/ ./
 COPY --from=extractor --chown=app:app /extract/application/ ./
 
-USER app
+# 이름이 아니라 숫자로 지정한다. 위 주석 참고.
+USER 10001
 
 EXPOSE 8080
 
