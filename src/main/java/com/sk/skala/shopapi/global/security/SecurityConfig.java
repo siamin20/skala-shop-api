@@ -75,7 +75,17 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/flash-sales", "/api/flash-sales/*").permitAll()
                         // 문서와 헬스체크. 운영 도구가 인증 없이 접근한다.
                         .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
-                        .requestMatchers("/actuator/health", "/h2-console/**").permitAll()
+                        // 쿠버네티스 probe는 인증 없이 호출된다. kubelet은 토큰을 갖고 있지 않다.
+                        // 막으면 파드가 영원히 Ready가 되지 않는다. (D24)
+                        //
+                        // 하위 경로까지 여는 이유는 probes.enabled로 health/liveness와
+                        // health/readiness가 생기기 때문이다. "/actuator/health"만 열면
+                        // 그 둘이 401이 되어 probe가 실패한다.
+                        //
+                        // show-details를 when-authorized로 둬서 익명 요청에는
+                        // UP/DOWN만 나가고 DB 접속 정보 같은 세부는 감춰진다.
+                        .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
+                        .requestMatchers("/actuator/info", "/h2-console/**").permitAll()
 
                         // ── 관리자 전용 ──
                         .requestMatchers(HttpMethod.POST, "/api/products").hasRole(Role.ADMIN.name())
