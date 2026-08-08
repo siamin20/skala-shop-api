@@ -7,7 +7,9 @@ import com.sk.skala.shopapi.global.error.ErrorCode;
 import jakarta.persistence.AttributeOverride;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embedded;
+import jakarta.persistence.EnumType;
 import jakarta.persistence.Entity;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
@@ -48,6 +50,17 @@ public class Customer {
     @Column(name = "customer_password", nullable = false, length = 100)
     private String password;
 
+    /**
+     * 역할. 인가 판단의 근거다. (D17)
+     *
+     * <p>{@code EnumType.STRING}으로 저장한다. 기본값인 {@code ORDINAL}은 순서 번호를 넣는데,
+     * 나중에 enum 상수 사이에 새 값을 끼워 넣으면 <b>기존 행의 의미가 통째로 밀린다.</b>
+     * 문자열이면 그런 사고가 없고 DB를 직접 봐도 값을 읽을 수 있다.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "customer_role", nullable = false, length = 20)
+    private Role role;
+
     /** 보유 포인트. 주문 시 차감되고 취소 시 환급된다. */
     @Embedded
     @AttributeOverride(name = "amount", column = @Column(name = "customer_point", nullable = false))
@@ -62,6 +75,16 @@ public class Customer {
      * @throws IllegalArgumentException 아이디나 비밀번호가 비어 있는 경우
      */
     public Customer(String customerId, String hashedPassword, Money initialPoint) {
+        this(customerId, hashedPassword, initialPoint, Role.CUSTOMER);
+    }
+
+    /**
+     * 역할을 지정해 고객을 만든다. 관리자 계정 생성에만 쓴다.
+     *
+     * <p>일반 가입 경로가 역할을 고를 수 없게 생성자를 나눴다. 하나로 두면
+     * 회원가입 요청에서 역할이 흘러들어올 여지가 생긴다.
+     */
+    public Customer(String customerId, String hashedPassword, Money initialPoint, Role role) {
         if (customerId == null || customerId.isBlank()) {
             throw new IllegalArgumentException("고객 아이디는 비어 있을 수 없습니다");
         }
@@ -71,6 +94,12 @@ public class Customer {
         this.customerId = customerId;
         this.password = hashedPassword;
         this.point = initialPoint == null ? Money.ZERO : initialPoint;
+        this.role = role;
+    }
+
+    /** 관리자인지 확인한다. */
+    public boolean isAdmin() {
+        return role == Role.ADMIN;
     }
 
     /**

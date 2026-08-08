@@ -124,12 +124,14 @@ dependencies {
     implementation 'org.flywaydb:flyway-core'
     runtimeOnly 'org.flywaydb:flyway-database-postgresql'
 
-    // BCrypt 해싱만 필요해서 spring-boot-starter-security가 아니라 crypto 모듈만 넣는다.
-    // starter를 넣으면 자동 설정이 기본 필터 체인을 켜서 모든 엔드포인트가 잠기고,
-    // 인가 규칙을 아직 정하지 않은 P1 단계에서 기존 API가 전부 401이 된다.
-    // crypto 모듈에는 자동 설정이 없어 부작용 없이 PasswordEncoder만 쓸 수 있다.
-    // P2에서 starter-security로 확장할 때 이 의존성은 그대로 포함된다. (D5)
-    implementation 'org.springframework.security:spring-security-crypto'
+    // 인증·인가. P1에서는 BCrypt만 필요해 spring-security-crypto만 넣었는데,
+    // starter는 자동 설정이 기본 필터 체인을 켜서 인가 규칙 없이는 모든 API가 401이 되기 때문이었다.
+    // P2에서 SecurityConfig로 규칙을 선언하므로 이제 starter로 확장한다.
+    // crypto 모듈은 starter에 포함되므로 따로 선언하지 않는다. (D5)
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+
+    // 테스트에서 @WithMockUser로 인증을 흉내 내기 위해 필요하다.
+    testImplementation 'org.springframework.security:spring-security-test'
 
     // Gradle이 JUnit 5 테스트를 실행할 때 필요한 런처.
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'

@@ -16,6 +16,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -120,8 +121,16 @@ class ProductControllerTest {
         }
     }
 
+    /**
+     * 상품 등록. P2부터 관리자 전용이다.
+     *
+     * <p>클래스에 {@code @WithMockUser(roles = "ADMIN")}를 걸어 인가를 통과시킨다.
+     * 권한이 없을 때 403이 나가는지는 {@code SecurityRuleTest}가 따로 확인한다.
+     * 여기서 둘을 섞으면 "검증 실패로 400"인지 "권한 없어 403"인지 구분이 흐려진다.
+     */
     @Nested
     @DisplayName("등록")
+    @WithMockUser(roles = "ADMIN")
     class Create {
 
         @Test
@@ -171,8 +180,10 @@ class ProductControllerTest {
         }
     }
 
+    /** 상품 수정·삭제. 등록과 같은 이유로 관리자 권한이 필요하다. */
     @Nested
     @DisplayName("수정과 삭제")
+    @WithMockUser(roles = "ADMIN")
     class UpdateAndDelete {
 
         @Test

@@ -46,6 +46,21 @@ shop:
   signup:
     initial-point: ${SIGNUP_INITIAL_POINT:1000000}
 
+  jwt:
+    # HS256은 최소 32바이트를 요구한다. 짧으면 기동 시 예외가 난다.
+    # 기본값은 로컬 개발용이며 운영에서는 반드시 환경변수로 덮어써야 한다.
+    secret: ${JWT_SECRET:local-development-only-secret-key-change-me-in-production}
+    # 짧게 두어 탈취되거나 권한이 회수됐을 때 유효한 시간을 줄인다. (D18)
+    access-validity: ${JWT_ACCESS_VALIDITY:15m}
+    # 재로그인 없이 유지할 기간. HttpOnly 쿠키로만 오간다.
+    refresh-validity: ${JWT_REFRESH_VALIDITY:14d}
+
+  admin:
+    # 값이 없으면 관리자 계정을 만들지 않는다. 기본값을 두면 설정을 잊었을 때
+    # 모두가 아는 비밀번호로 관리자가 생긴다.
+    id: ${SHOP_ADMIN_ID:}
+    password: ${SHOP_ADMIN_PASSWORD:}
+
 springdoc:
   swagger-ui:
     # 기본 경로(/swagger-ui/index.html) 대신 짧은 주소를 쓴다.
