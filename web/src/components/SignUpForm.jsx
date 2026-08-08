@@ -53,8 +53,21 @@ export default function SignUpForm({ onSubmit, onCancel, busy }) {
 
   const valid = Object.values(errors).every((e) => e === null)
 
-  const set = (field) => (e) => setValues({ ...values, [field]: e.target.value })
-  const blur = (field) => () => setTouched({ ...touched, [field]: true })
+  /*
+   * 이전 상태를 인자로 받아 갱신한다. { ...values } 처럼 바깥 변수를 쓰면 안 된다.
+   *
+   * 이 핸들러들은 만들어진 시점의 values/touched를 붙잡고 있다. 리렌더 사이에
+   * 두 번 호출되면 두 번째가 첫 번째를 덮어쓴다.
+   *
+   * 실제로 그랬다. 세 칸을 연달아 벗어나면 마지막 칸의 오류만 남고
+   * 앞의 두 개가 사라졌다. 한 칸씩 천천히 옮기면 리렌더가 끼어들어 안 보이지만,
+   * 자동완성처럼 한꺼번에 채워지는 경우에는 그대로 드러난다.
+   */
+  const set = (field) => (e) => {
+    const value = e.target.value
+    setValues((prev) => ({ ...prev, [field]: value }))
+  }
+  const blur = (field) => () => setTouched((prev) => ({ ...prev, [field]: true }))
   const show = (field) => touched[field] && errors[field]
 
   return (
