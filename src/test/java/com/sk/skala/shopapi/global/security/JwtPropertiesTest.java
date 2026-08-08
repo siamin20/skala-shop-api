@@ -72,6 +72,46 @@ class JwtPropertiesTest {
     }
 
     @Test
+    @DisplayName("토큰 수명이 없으면 기동을 막는다")
+    void rejectMissingValidity() {
+        // 비워두면 null이 바인딩되고, 첫 로그인에서 now.plus(null)이 NPE를 던져
+        // 500으로 실패한다. 기동은 멀쩡히 되므로 배포 후 첫 사용자가 밟기 전까지 모른다.
+        String secret = "a-secret-that-is-long-enough-for-hs256";
+
+        assertThatThrownBy(() -> new JwtProperties(secret, null, REFRESH, null))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("access-validity");
+
+        assertThatThrownBy(() -> new JwtProperties(secret, ACCESS, null, null))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("refresh-validity");
+    }
+
+    @Test
+    @DisplayName("토큰 수명이 0 이하면 기동을 막는다")
+    void rejectNonPositiveValidity() {
+        // 0이면 발급 즉시 만료된다. 설정은 있는데 아무도 로그인할 수 없는 상태다.
+        String secret = "a-secret-that-is-long-enough-for-hs256";
+
+        assertThatThrownBy(() -> new JwtProperties(secret, Duration.ZERO, REFRESH, null))
+                .isInstanceOf(IllegalStateException.class);
+
+        assertThatThrownBy(() -> new JwtProperties(secret, Duration.ofMinutes(-1), REFRESH, null))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    @DisplayName("액세스 토큰이 리프레시보다 오래 살면 막는다")
+    void rejectAccessLongerThanRefresh() {
+        // 갱신 구조가 뒤집힌다. 짧은 수명으로 탈취 피해를 줄이려던 의도(D18)가 사라진다.
+        assertThatThrownBy(() -> new JwtProperties(
+                "a-secret-that-is-long-enough-for-hs256",
+                Duration.ofDays(30), Duration.ofDays(14), null))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("리프레시");
+    }
+
+    @Test
     @DisplayName("cookieSecure를 지정하지 않으면 안전한 쪽인 true가 된다")
     void cookieSecureDefaultsToTrue() {
         // 설정을 빠뜨렸을 때 기울어지는 방향이 중요하다.

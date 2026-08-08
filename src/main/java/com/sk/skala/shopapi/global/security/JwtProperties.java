@@ -23,8 +23,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * 잘못된 설정으로 서비스가 떠 있게 된다.
  *
  * @param secret          HS256 서명 키. 최소 32바이트여야 한다
- * @param accessValidity  액세스 토큰 수명. 짧게 둬야 탈취 피해가 줄어든다
- * @param refreshValidity 리프레시 토큰 수명
+ * @param accessValidity  액세스 토큰 수명. 짧게 둬야 탈취 피해가 줄어든다. 0 이하 불가
+ * @param refreshValidity 리프레시 토큰 수명. 액세스 토큰보다 길어야 한다
  * @param cookieSecure    리프레시 쿠키에 {@code Secure} 속성을 붙일지 여부
  */
 @ConfigurationProperties(prefix = "shop.jwt")
@@ -59,10 +59,41 @@ public record JwtProperties(
                             .formatted(length, MIN_SECRET_BYTES));
         }
 
+        // 수명도 같은 자리에서 막는다.
+        //
+        // 비워두면 null이 그대로 바인딩되고, 첫 로그인에서 now.plus(null)이
+        // NullPointerException을 던져 500으로 실패한다. 기동은 멀쩡히 되므로
+        // 배포 후 첫 사용자가 밟기 전까지 아무도 모른다.
+        //
+        // 이 클래스의 목적이 "잘못된 설정으로 서비스가 떠 있게 두지 않는다"인데
+        // 시크릿만 막고 수명을 빠뜨리면 절반만 지킨 셈이다.
+        requirePositive(accessValidity, "shop.jwt.access-validity");
+        requirePositive(refreshValidity, "shop.jwt.refresh-validity");
+
+        if (accessValidity.compareTo(refreshValidity) > 0) {
+            // 액세스 토큰이 리프레시보다 오래 살면 갱신 구조 자체가 뒤집힌다.
+            // 짧은 수명으로 탈취 피해를 줄이려던 의도(D18)가 사라진다.
+            throw new IllegalStateException(
+                    "액세스 토큰 수명(%s)이 리프레시 토큰 수명(%s)보다 깁니다"
+                            .formatted(accessValidity, refreshValidity));
+        }
+
         if (cookieSecure == null) {
             // 기본값을 true로 둔다. 설정을 빠뜨렸을 때 안전한 쪽으로 기울어야 한다.
             // primitive boolean이었다면 누락 시 false가 되어 반대로 기울었을 것이다.
             cookieSecure = true;
+        }
+    }
+
+    private static void requirePositive(Duration value, String name) {
+        if (value == null) {
+            throw new IllegalStateException("%s가 설정되지 않았습니다".formatted(name));
+        }
+        if (value.isZero() || value.isNegative()) {
+            // 0이면 발급 즉시 만료된다. 음수면 발급 시점부터 이미 만료다.
+            // 둘 다 "설정은 있는데 아무도 로그인할 수 없는" 상태를 만든다.
+            throw new IllegalStateException(
+                    "%s는 0보다 커야 합니다. 현재 %s".formatted(name, value));
         }
     }
 }
