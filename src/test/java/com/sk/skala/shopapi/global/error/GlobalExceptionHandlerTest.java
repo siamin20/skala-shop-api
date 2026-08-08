@@ -14,6 +14,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -40,6 +41,9 @@ import jakarta.validation.constraints.NotBlank;
  */
 @SpringBootTest
 @AutoConfigureMockMvc
+// 이 테스트의 관심사는 예외가 어떤 응답으로 바뀌는가이지 인가가 아니다.
+// 인증을 흉내 내 시큐리티 필터를 통과시키고, 그 뒤 예외 처리만 검증한다.
+@WithMockUser
 class GlobalExceptionHandlerTest {
 
     @Autowired

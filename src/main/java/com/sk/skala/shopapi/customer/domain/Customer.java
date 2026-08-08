@@ -7,7 +7,9 @@ import com.sk.skala.shopapi.global.error.ErrorCode;
 import jakarta.persistence.AttributeOverride;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embedded;
+import jakarta.persistence.EnumType;
 import jakarta.persistence.Entity;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
@@ -48,10 +50,41 @@ public class Customer {
     @Column(name = "customer_password", nullable = false, length = 100)
     private String password;
 
+    /**
+     * 역할. 인가 판단의 근거다. (D17)
+     *
+     * <p>{@code EnumType.STRING}으로 저장한다. 기본값인 {@code ORDINAL}은 순서 번호를 넣는데,
+     * 나중에 enum 상수 사이에 새 값을 끼워 넣으면 <b>기존 행의 의미가 통째로 밀린다.</b>
+     * 문자열이면 그런 사고가 없고 DB를 직접 봐도 값을 읽을 수 있다.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "customer_role", nullable = false, length = 20)
+    private Role role;
+
     /** 보유 포인트. 주문 시 차감되고 취소 시 환급된다. */
     @Embedded
     @AttributeOverride(name = "amount", column = @Column(name = "customer_point", nullable = false))
     private Money point;
+
+    /**
+     * 토큰 버전. 로그아웃하면 올라간다. (D25)
+     *
+     * <p>리프레시 토큰에 발급 시점의 이 값을 담아두고, 재발급할 때 지금 값과 비교한다.
+     * 다르면 거부한다. 로그아웃으로 값이 올라가면 <b>그 전에 발급된 리프레시 토큰이
+     * 한꺼번에 무효가 된다.</b>
+     *
+     * <p>이게 없으면 로그아웃은 쿠키만 지운다. 브라우저에서는 사라지지만 토큰 자체는
+     * 그대로 유효해서, 공격자가 이미 확보했다면 <b>최대 14일 동안 계속 재발급받을 수 있다.</b>
+     *
+     * <p>폐기 목록 대신 숫자 하나를 쓰는 이유는 비용이다. 목록은 발급된 토큰 수만큼
+     * 행이 늘고 만료된 것을 지우는 배치가 따로 필요하다. 버전은 고객당 8바이트로 끝난다.
+     *
+     * <p><b>액세스 토큰에는 적용하지 않는다.</b> 적용하려면 매 요청마다 DB를 읽어야 해서
+     * JWT를 쓴 이유인 무상태성이 사라진다. 액세스 토큰은 15분이면 만료되므로
+     * 로그아웃 후 최대 15분의 창이 남는다. 그 대가로 요청마다의 DB 조회를 피한다.
+     */
+    @Column(name = "token_version", nullable = false)
+    private long tokenVersion;
 
     /**
      * 새 고객을 만든다.
@@ -62,6 +95,16 @@ public class Customer {
      * @throws IllegalArgumentException 아이디나 비밀번호가 비어 있는 경우
      */
     public Customer(String customerId, String hashedPassword, Money initialPoint) {
+        this(customerId, hashedPassword, initialPoint, Role.CUSTOMER);
+    }
+
+    /**
+     * 역할을 지정해 고객을 만든다. 관리자 계정 생성에만 쓴다.
+     *
+     * <p>일반 가입 경로가 역할을 고를 수 없게 생성자를 나눴다. 하나로 두면
+     * 회원가입 요청에서 역할이 흘러들어올 여지가 생긴다.
+     */
+    public Customer(String customerId, String hashedPassword, Money initialPoint, Role role) {
         if (customerId == null || customerId.isBlank()) {
             throw new IllegalArgumentException("고객 아이디는 비어 있을 수 없습니다");
         }
@@ -71,6 +114,12 @@ public class Customer {
         this.customerId = customerId;
         this.password = hashedPassword;
         this.point = initialPoint == null ? Money.ZERO : initialPoint;
+        this.role = role;
+    }
+
+    /** 관리자인지 확인한다. */
+    public boolean isAdmin() {
+        return role == Role.ADMIN;
     }
 
     /**
@@ -125,6 +174,23 @@ public class Customer {
     }
 
     /** 이 고객이 {@code customerId}의 주인인지 확인한다. 남의 자원 접근을 막을 때 쓴다. */
+    /**
+     * 발급된 리프레시 토큰을 모두 무효화한다.
+     *
+     * <p>로그아웃할 때 부른다. 값이 하나 올라가면 이전 버전을 담은 토큰은
+     * 전부 재발급 심사를 통과하지 못한다. 여러 기기에서 로그인해 있었다면
+     * <b>모두 함께 끊긴다.</b> 기기별로 끊으려면 세션 식별자가 따로 필요한데,
+     * 그건 무상태 JWT의 범위를 벗어난다.
+     */
+    public void invalidateTokens() {
+        this.tokenVersion++;
+    }
+
+    /** 리프레시 토큰에 담긴 버전이 지금도 유효한지 확인한다. */
+    public boolean hasTokenVersion(long tokenVersion) {
+        return this.tokenVersion == tokenVersion;
+    }
+
     public boolean isOwner(String customerId) {
         return this.customerId.equals(customerId);
     }

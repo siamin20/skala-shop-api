@@ -1,6 +1,8 @@
 # Java / Gradle
 build/
 .gradle/
+# Eclipse·IDE 빌드 산출물. Gradle의 build/와 별개로 생긴다.
+bin/
 *.class
 *.log
 
