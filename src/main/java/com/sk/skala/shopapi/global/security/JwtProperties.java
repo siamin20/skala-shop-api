@@ -1,19 +1,68 @@
 package com.sk.skala.shopapi.global.security;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
- * JWT 설정.
+ * JWT 설정. (D5, D18)
  *
- * <p>비밀키를 코드에 두지 않고 설정으로 뺀다. 코드에 박으면 저장소에 그대로 올라가고,
- * 저장소를 읽을 수 있는 사람은 누구나 임의의 토큰을 만들어 아무 계정으로도 로그인할 수 있다.
+ * <h2>시크릿에 기본값을 두지 않는다</h2>
  *
- * @param secret          서명 키. HS256은 최소 32바이트를 요구한다
- * @param accessValidity  액세스 토큰 수명. 짧게 두어 탈취 시 피해 시간을 줄인다 (D18)
+ * <p>원래 {@code application.yml}에 로컬 개발용 기본값이 박혀 있었다.
+ * <b>이 저장소는 공개되어 있어 그 값을 누구나 읽을 수 있다.</b> 그대로 배포하면
+ * 아무나 {@code role=ADMIN} 토큰을 만들어 서명까지 맞출 수 있다.
+ * 주석으로 "운영에서 바꾸세요"라고 적어두는 것으로는 부족하다. 잊으면 그만이기 때문이다.
+ *
+ * <p>그래서 기본값을 없애고 <b>비어 있으면 기동을 실패시킨다.</b>
+ * 로컬 개발용 값은 {@code local} 프로파일에만 둔다. 운영 프로파일에는 없으므로
+ * {@code JWT_SECRET}을 주지 않으면 애초에 뜨지 않는다.
+ *
+ * <p>기동 시점에 막는 것이 핵심이다. 런타임에 검사하면 첫 로그인이 들어올 때까지
+ * 잘못된 설정으로 서비스가 떠 있게 된다.
+ *
+ * @param secret          HS256 서명 키. 최소 32바이트여야 한다
+ * @param accessValidity  액세스 토큰 수명. 짧게 둬야 탈취 피해가 줄어든다
  * @param refreshValidity 리프레시 토큰 수명
+ * @param cookieSecure    리프레시 쿠키에 {@code Secure} 속성을 붙일지 여부
  */
 @ConfigurationProperties(prefix = "shop.jwt")
-public record JwtProperties(String secret, Duration accessValidity, Duration refreshValidity) {
+public record JwtProperties(
+        String secret,
+        Duration accessValidity,
+        Duration refreshValidity,
+        Boolean cookieSecure) {
+
+    /** HS256이 요구하는 최소 키 길이. 더 짧으면 jjwt가 예외를 던진다. */
+    private static final int MIN_SECRET_BYTES = 32;
+
+    public JwtProperties {
+        if (secret == null || secret.isBlank()) {
+            throw new IllegalStateException("""
+                    JWT_SECRET이 설정되지 않았습니다.
+
+                    32바이트 이상의 임의 문자열을 환경변수로 지정하세요.
+                      export JWT_SECRET="$(openssl rand -base64 48)"
+
+                    기본값을 두지 않는 이유: 저장소에 커밋된 시크릿이 운영에 적용되면
+                    누구나 관리자 토큰을 위조할 수 있습니다.
+                    로컬 개발은 local 프로파일에 준비된 값이 자동으로 쓰입니다.""");
+        }
+
+        int length = secret.getBytes(StandardCharsets.UTF_8).length;
+        if (length < MIN_SECRET_BYTES) {
+            // 문자 수가 아니라 바이트 수로 센다. 한글은 한 글자가 3바이트라
+            // 글자 수로 재면 짧은 키를 통과시킨다. (D14와 같은 함정이다)
+            throw new IllegalStateException(
+                    "JWT_SECRET이 너무 짧습니다. %d바이트인데 최소 %d바이트가 필요합니다"
+                            .formatted(length, MIN_SECRET_BYTES));
+        }
+
+        if (cookieSecure == null) {
+            // 기본값을 true로 둔다. 설정을 빠뜨렸을 때 안전한 쪽으로 기울어야 한다.
+            // primitive boolean이었다면 누락 시 false가 되어 반대로 기울었을 것이다.
+            cookieSecure = true;
+        }
+    }
 }

@@ -95,8 +95,10 @@ public class AuthController {
         }
 
         try {
-            AuthenticatedCustomer principal = jwtProvider.parseRefreshToken(refreshToken);
-            return authService.reissue(principal.customerId());
+            var claims = jwtProvider.parseRefreshToken(refreshToken);
+            // 토큰에 담긴 버전이 지금도 유효한지 서비스가 확인한다.
+            // 로그아웃 이후에 발급된 토큰이면 여기서 걸린다. (D25)
+            return authService.reissue(claims.customerId(), claims.tokenVersion());
         } catch (JwtException e) {
             throw new BusinessException(ErrorCode.NOT_AUTHENTICATED, "리프레시 토큰이 유효하지 않습니다");
         }
@@ -105,15 +107,36 @@ public class AuthController {
     /**
      * 로그아웃.
      *
-     * <p>리프레시 쿠키를 만료시킨다. 액세스 토큰은 서버가 회수할 수 없다.
-     * JWT는 그 자체로 유효성을 담고 있어 발급 후에는 무효화할 방법이 없기 때문이다.
-     * 남은 수명(15분) 동안은 유효하며, 이것이 액세스 토큰을 짧게 두는 또 하나의 이유다.
-     * 즉시 무효화가 필요하면 서버에 폐기 목록을 둬야 하는데, 그러면 JWT의 장점인
-     * 무상태성이 사라진다.
+     * <p>두 가지를 한다. <b>쿠키를 지우는 것만으로는 로그아웃이 되지 않는다.</b>
+     *
+     * <ol>
+     *   <li>리프레시 쿠키를 만료시킨다 — 이 브라우저에서 토큰이 사라진다
+     *   <li>고객의 토큰 버전을 올린다 — <b>이미 발급된 리프레시 토큰이 전부 무효가 된다</b>
+     * </ol>
+     *
+     * <p>두 번째가 없으면 쿠키만 지워질 뿐 토큰 자체는 그대로 유효하다.
+     * 공격자가 이미 확보했다면 사용자가 로그아웃해도 <b>최대 14일 동안 계속
+     * 액세스 토큰을 재발급받을 수 있다.</b> 로그아웃이 아무것도 막지 못하는 셈이다. (D25)
+     *
+     * <h2>남는 한계</h2>
+     *
+     * <p><b>액세스 토큰은 여전히 회수하지 못한다.</b> 남은 수명(최대 15분) 동안 유효하다.
+     * 회수하려면 매 요청마다 DB에서 버전을 확인해야 하는데, 그러면 JWT를 쓴 이유인
+     * 무상태성이 사라진다. 15분의 창을 감수하고 요청마다의 DB 조회를 피하는 선택이다.
+     * 액세스 토큰을 짧게 둔 것(D18)이 이 창을 좁히는 장치다.
+     *
+     * <p>여러 기기에서 로그인해 있었다면 <b>모두 함께 끊긴다.</b> 기기별로 끊으려면
+     * 세션 식별자가 따로 필요한데 그건 무상태 JWT의 범위를 벗어난다.
      */
-    @Operation(summary = "로그아웃", description = "리프레시 쿠키를 만료시킨다.")
+    @Operation(
+            summary = "로그아웃",
+            description = "리프레시 쿠키를 만료시키고 발급된 리프레시 토큰을 모두 무효화한다.")
     @PostMapping("/logout")
-    public ResponseEntity<Void> logout() {
+    public ResponseEntity<Void> logout(
+            @AuthenticationPrincipal AuthenticatedCustomer principal) {
+
+        authService.logout(principal.customerId());
+
         return ResponseEntity.noContent()
                 .header(HttpHeaders.SET_COOKIE, refreshCookie("", Duration.ZERO).toString())
                 .build();
@@ -134,9 +157,13 @@ public class AuthController {
                 .sameSite("Strict")
                 // 이 경로 외에는 전송되지 않는다.
                 .path(REFRESH_PATH)
-                // 운영에서는 HTTPS 전용이어야 한다. 로컬 HTTP 개발을 위해 설정으로 뺄 수도 있으나
-                // 지금은 false로 두고 P6 배포 시 프로파일로 분리한다.
-                .secure(false)
+                // HTTPS로만 전송한다. 끄면 평문 HTTP로도 쿠키가 나가서
+                // 중간자가 리프레시 토큰을 그대로 가져간다. HttpOnly와 SameSite를
+                // 걸어둔 의미가 사라진다.
+                //
+                // 기본값이 true고, HTTP로 띄우는 local 프로파일에서만 false로 내린다.
+                // 하드코딩된 false였을 때는 운영에 그대로 나갈 위험이 있었다.
+                .secure(jwtProperties.cookieSecure())
                 .maxAge(maxAge)
                 .build();
     }

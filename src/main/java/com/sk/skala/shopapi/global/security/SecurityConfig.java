@@ -2,6 +2,7 @@ package com.sk.skala.shopapi.global.security;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
+import org.springframework.core.env.Environment;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -41,8 +42,20 @@ public class SecurityConfig {
     private final JwtProvider jwtProvider;
     private final SecurityProblemHandlers problemHandlers;
 
+    /**
+     * H2 콘솔을 열어둘지 판단하는 데 쓴다.
+     *
+     * <p>{@code local} 프로파일에서만 연다. 프로파일과 무관하게 열어두면
+     * <b>운영에 그대로 나가 누구나 브라우저로 DB 전체를 조회하고 수정할 수 있다.</b>
+     * 인증도 없다. prod는 PostgreSQL이라 콘솔이 뜨지 않지만, 그건 우연한 안전이지
+     * 설계된 안전이 아니다. 설정 하나만 바뀌면 무너진다.
+     */
+    private final Environment environment;
+
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        boolean localProfile = environment.matchesProfiles("local");
+
         http
                 // D18: 액세스 토큰을 쿠키가 아니라 Authorization 헤더로 받는다.
                 // 브라우저가 자동으로 붙이지 않으므로 CSRF 공격이 성립하지 않는다.
@@ -61,7 +74,8 @@ public class SecurityConfig {
                         .authenticationEntryPoint(problemHandlers.authenticationEntryPoint())
                         .accessDeniedHandler(problemHandlers.accessDeniedHandler()))
 
-                .authorizeHttpRequests(auth -> auth
+                .authorizeHttpRequests(auth -> {
+                    auth
                         // ── 공개 ──
                         // 회원가입과 로그인은 인증 전에 호출되므로 열어야 한다.
                         .requestMatchers(HttpMethod.POST, "/api/customers").permitAll()
@@ -70,7 +84,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/products", "/api/products/*").permitAll()
                         // 문서와 헬스체크. 운영 도구가 인증 없이 접근한다.
                         .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
-                        .requestMatchers("/actuator/health", "/h2-console/**").permitAll()
+                        .requestMatchers("/actuator/health").permitAll()
 
                         // ── 관리자 전용 ──
                         .requestMatchers(HttpMethod.POST, "/api/products").hasRole(Role.ADMIN.name())
@@ -80,18 +94,35 @@ public class SecurityConfig {
                         // 잔액을 임의 값으로 덮어쓰는 동작이라 본인에게도 열지 않는다. (D13)
                         .requestMatchers(HttpMethod.PUT, "/api/customers/*").hasRole(Role.ADMIN.name())
 
-                        // ── 로그인 필요 ──
-                        // 본인 여부는 여기서 못 가린다. 경로 변수와 토큰 주체를 비교해야 하므로
-                        // 서비스 계층에서 확인한다. 필터 체인은 "로그인했는가"까지만 책임진다.
-                        .anyRequest().authenticated())
+                        ;
+
+                    // ── H2 콘솔: local 프로파일에서만 ──
+                    //
+                    // 콘솔에는 인증이 없다. 열려 있으면 누구나 브라우저로 DB를 통째로
+                    // 조회하고 수정할 수 있다. prod는 PostgreSQL이라 콘솔이 뜨지 않지만,
+                    // 그건 우연한 안전이지 설계된 안전이 아니다. 설정 하나만 바뀌면 무너진다.
+                    //
+                    // anyRequest보다 먼저 선언해야 한다. 뒤에 두면
+                    // "Can't configure mvcMatchers after anyRequest"로 기동이 실패한다.
+                    if (localProfile) {
+                        auth.requestMatchers("/h2-console/**").permitAll();
+                    }
+
+                    // ── 로그인 필요 ──
+                    // 본인 여부는 여기서 못 가린다. 경로 변수와 토큰 주체를 비교해야 하므로
+                    // 서비스 계층에서 확인한다. 필터 체인은 "로그인했는가"까지만 책임진다.
+                    auth.anyRequest().authenticated();
+                })
 
                 .addFilterBefore(
                         new JwtAuthenticationFilter(jwtProvider),
                         UsernamePasswordAuthenticationFilter.class);
 
-        // H2 콘솔은 프레임으로 렌더링되어 기본 X-Frame-Options 설정에 막힌다.
-        // local 프로파일에서만 켜지므로 운영 보안에는 영향이 없다.
-        http.headers(headers -> headers.frameOptions(frame -> frame.sameOrigin()));
+        // H2 콘솔은 프레임으로 렌더링되어 기본 X-Frame-Options에 막힌다.
+        // 그 완화도 필요한 곳에서만 한다. 전역으로 풀면 클릭재킹 방어가 사라진다.
+        if (localProfile) {
+            http.headers(headers -> headers.frameOptions(frame -> frame.sameOrigin()));
+        }
 
         return http.build();
     }
