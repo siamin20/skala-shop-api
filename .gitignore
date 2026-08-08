@@ -36,18 +36,6 @@ docs/
 # Gradle의 build/와 같은 성격인데 경로만 다르다.
 bin/
 
-# 로컬 작업 규칙 묶음. AGENTS.md가 여기를 가리킨다.
-.local/
-
-AGENTS.md
-CLAUDE.md
-CONTRIBUTING.md
-
-# 보고서 생성 도구와 산출물.
-#
-# 입력이 docs/captures/ 인데 그 폴더가 커밋 대상이 아니라, 이것만 올려두면
-# 받아간 사람이 돌릴 수 없는 스크립트가 된다. 제출 산출물이지 소스가 아니므로 함께 뺀다.
-tools/
-*.docx
-web/capture*.mjs
-web/render-term.mjs
+# 개인 작업 환경과 보고서 생성 도구는 .git/info/exclude 에 둔다.
+# 저장소가 각자의 개발 환경까지 설명할 이유가 없고,
+# 사람마다 다른 항목이 쌓이면 이 파일이 금방 지저분해진다.
