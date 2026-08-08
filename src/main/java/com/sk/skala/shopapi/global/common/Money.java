@@ -140,12 +140,18 @@ public class Money implements Comparable<Money> {
         if (part < 0 || part > whole) {
             throw new IllegalArgumentException("부분 수량이 범위를 벗어났습니다: %d / %d".formatted(part, whole));
         }
-        try {
-            return new Money(Math.multiplyExact(this.amount, part) / whole);
-        } catch (ArithmeticException e) {
-            throw new IllegalArgumentException(
-                    "금액 계산 결과가 너무 큽니다: %d × %d".formatted(this.amount, part));
-        }
+        // amount × part를 먼저 계산하면 결과는 범위 안인데 중간값만 넘쳐서 정상 요청이 거부된다.
+        // 몫과 나머지로 나눠 계산하면 중간값이 커지지 않으면서 결과는 동일하다.
+        //
+        //   amount × part / whole
+        // = (q × whole + r) × part / whole        (q = amount/whole, r = amount%whole)
+        // = q × part + (r × part) / whole
+        //
+        // 두 항 모두 안전하다. part ≤ whole 이므로 q × part ≤ amount 이고,
+        // r < whole ≤ Integer.MAX_VALUE 이므로 r × part < whole² < Long.MAX_VALUE 이다.
+        long quotient = this.amount / whole;
+        long remainder = this.amount % whole;
+        return new Money(quotient * part + (remainder * part) / whole);
     }
 
     /**
