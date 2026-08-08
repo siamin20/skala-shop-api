@@ -1,0 +1,50 @@
+# 설정과 비밀값
+#
+# 둘을 나누는 기준은 단순하다. **로그나 화면에 찍혀도 되는가.**
+# 되면 ConfigMap, 안 되면 Secret이다. (D24)
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: shop-api-config
+  namespace: skala-shop
+data:
+  # prod 프로파일. ddl-auto가 validate이고 스키마는 Flyway가 만든다. (D16)
+  SPRING_PROFILES_ACTIVE: "prod"
+
+  # 서비스 이름으로 접속한다. 클러스터 DNS가 이름을 파드 IP로 풀어준다.
+  # IP를 직접 적으면 파드가 재생성될 때마다 바뀌어 매번 고쳐야 한다.
+  DATABASE_URL: "jdbc:postgresql://postgres:5432/skalashop"
+  REDIS_HOST: "redis"
+
+  # 선착순 전략. 측정 결과 기본값으로 정한 것이다. (D23)
+  SHOP_FLASH_SALE_STRATEGY: "ATOMIC_UPDATE"
+
+  # 이 클러스터에는 Redis가 함께 뜨므로 헬스 체크를 켠다.
+  # 기본값이 false인 이유는 명세대로 단독 컨테이너로 띄울 때
+  # 쓰지도 않는 Redis 때문에 health가 DOWN이 되기 때문이다. (D24)
+  MANAGEMENT_HEALTH_REDIS_ENABLED: "true"
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: shop-api-secret
+  namespace: skala-shop
+type: Opaque
+stringData:
+  # 여기 적힌 값은 예시다. 실제 배포에서는 반드시 교체해야 한다.
+  #
+  # Secret은 base64로 인코딩될 뿐 암호화가 아니다. etcd에 거의 평문으로 들어가고
+  # 조회 권한이 있으면 누구나 읽는다. 저장소에 커밋하는 것 자체가 문제라
+  # 운영에서는 External Secrets나 Sealed Secrets로 바깥에서 주입해야 한다.
+  # 이 파일은 "어떤 키가 필요한가"를 보여주는 템플릿으로만 쓴다.
+  #
+  # stringData를 쓰면 평문으로 적을 수 있다. 쿠버네티스가 저장할 때 인코딩한다.
+  # data에 직접 적으려면 base64로 바꿔야 하는데, 그 과정에서 실수가 잦고
+  # 사람이 읽을 수 없어 무엇이 들어 있는지 확인하기 어렵다.
+  DATABASE_USERNAME: "skalashop"
+  DATABASE_PASSWORD: "CHANGE-ME-IN-PRODUCTION"
+
+  # HS256은 최소 32바이트를 요구한다. 짧으면 기동 시 예외가 난다.
+  JWT_SECRET: "CHANGE-ME-a-32-byte-or-longer-random-secret-value"

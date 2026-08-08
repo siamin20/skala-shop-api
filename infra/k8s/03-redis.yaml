@@ -1,0 +1,54 @@
+# Redis
+#
+# 이쪽은 Deployment로 둔다. PostgreSQL과 다르게 취급하는 이유가 있다. (D24)
+#
+# 선착순 카운터는 유실돼도 DB로 복구할 수 있다. 영속화가 필요 없어
+# 볼륨도 붙이지 않고, 파드가 재생성돼도 잃을 것이 없다.
+# 상태가 없으면 Deployment가 맞다.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: skala-shop
+spec:
+  selector:
+    app: redis
+  ports:
+    - port: 6379
+      targetPort: 6379
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: skala-shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          # 영속화를 끈다. 위에 적은 이유대로 잃어도 되는 데이터다.
+          args: ["redis-server", "--save", "", "--appendonly", "no"]
+          ports:
+            - containerPort: 6379
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"

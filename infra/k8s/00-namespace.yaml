@@ -1,0 +1,11 @@
+# 네임스페이스
+#
+# default에 얹지 않는다. 클러스터를 다른 실습과 공유할 때 자원이 섞이고,
+# 정리할 때 무엇을 지워야 할지 알 수 없게 된다.
+# 네임스페이스 하나를 지우면 안에 든 것이 전부 함께 사라진다. (D24)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: skala-shop
+  labels:
+    app.kubernetes.io/name: skala-shop

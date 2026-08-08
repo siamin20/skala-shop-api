@@ -1,0 +1,75 @@
+# 애플리케이션까지 포함한 전체 스택
+#
+# infra/compose.yaml은 DB와 Redis만 띄운다. 개발 중에는 애플리케이션을 IDE로
+# 실행하는 편이 재시작이 빠르고 디버거를 붙이기 쉽기 때문이다.
+#
+# 이 파일은 다르다. 운영과 같은 구성으로 세 컨테이너를 함께 띄운다.
+# 배포 전에 "컨테이너 안에서도 도는가"를 확인하는 용도다. (D24)
+#
+# 실행: docker compose -f infra/compose.app.yaml up -d --build
+# 확인: curl http://localhost:8080/actuator/health
+# 종료: docker compose -f infra/compose.app.yaml down -v
+
+name: skala-shop-app
+
+services:
+  app:
+    build:
+      # 빌드 컨텍스트는 저장소 루트다. Dockerfile이 gradlew와 src를 참조한다.
+      context: ..
+      dockerfile: Dockerfile
+    image: shop-api:1.0
+    container_name: skala-shop-api
+    environment:
+      # prod 프로파일이라 PostgreSQL에 붙고 ddl-auto가 validate다.
+      # 스키마는 Flyway가 만든다. (D16)
+      SPRING_PROFILES_ACTIVE: prod
+
+      # 컨테이너끼리는 서비스 이름으로 통신한다. localhost가 아니다.
+      # localhost로 두면 애플리케이션 컨테이너 자기 자신을 가리켜 접속에 실패한다.
+      DATABASE_URL: jdbc:postgresql://postgres:5432/skalashop
+      DATABASE_USERNAME: skalashop
+      DATABASE_PASSWORD: skalashop
+      REDIS_HOST: redis
+
+      # 기본값을 쓰지 않는다. application.yml의 기본 시크릿은 저장소에 공개돼 있어
+      # 그대로 두면 누구나 토큰을 위조할 수 있다.
+      # 이 값도 예시일 뿐이라 실제 배포에서는 반드시 바꿔야 한다.
+      JWT_SECRET: ${JWT_SECRET:-compose-local-only-secret-key-change-me-please}
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    depends_on:
+      # 컨테이너가 뜬 것과 접속을 받는 것은 다르다.
+      # service_started로 두면 애플리케이션이 먼저 붙어 연결 실패로 죽는다.
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: skalashop
+      POSTGRES_USER: skalashop
+      POSTGRES_PASSWORD: skalashop
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U skalashop -d skalashop"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  postgres-data:
