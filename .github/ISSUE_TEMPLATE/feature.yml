@@ -1,0 +1,63 @@
+name: 기능
+description: 새로 할 수 있게 되는 일을 등록합니다.
+title: "[Feat] "
+labels: ["✨feat✨"]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: 영역
+      options:
+        - Domain
+        - API
+        - Security
+        - Concurrency
+        - Infra
+        - Docs
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 무엇이 없어서 문제인가
+      description: 기능 이름이 아니라 없을 때 생기는 문제를 씁니다.
+      placeholder: |
+        지금은 재고 개념이 없어 여러 사용자가 같은 행을 다투는 상황이
+        만들어지지 않는다. 락 전략을 비교할 대상이 없다.
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: 범위
+      placeholder: |
+        - [ ] 작업 1
+        - [ ] 작업 2
+    validations:
+      required: true
+
+  - type: textarea
+    id: done
+    attributes:
+      label: 완료 조건
+      description: 무엇을 보고 끝났다고 판단할지 씁니다. "구현 완료"는 조건이 아닙니다.
+      placeholder: |
+        - [ ] 재고 100개에 200 요청 시 정확히 100건만 성공
+        - [ ] 측정치를 docs/04-concurrency.md에 기록
+    validations:
+      required: true
+
+  - type: input
+    id: spec
+    attributes:
+      label: 과제 명세 관련 여부
+      description: 명세 페이지 번호. 명세에 없는 확장이면 결정 번호(D숫자)를 적습니다.
+      placeholder: "540~544p / 또는 D22 (명세 외 확장)"
+
+  - type: input
+    id: branch
+    attributes:
+      label: 작업 브랜치
+      placeholder: feat/order/stock
