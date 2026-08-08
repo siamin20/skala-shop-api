@@ -585,3 +585,11 @@ input.invalid { border-color: var(--sale); }
 /* ── 마이페이지 배송지 목록 ── */
 .mp-address-list { display: grid; gap: 10px; }
 .mp-address-list .mp-address { border: 1px solid var(--line); border-radius: 10px; padding: 13px; }
+
+/* ── 수량 입력 창 (D48) ──
+   부분 취소에서 쓴다. 브라우저 prompt를 대체한다. */
+.qty-field { display: flex; align-items: center; gap: 8px; margin: 14px 0 0; }
+.qty-field input { width: 90px; text-align: center; font-size: 16px;
+  font-variant-numeric: tabular-nums; }
+.qty-field .muted { font-size: 14px; }
+.mini-dialog .field-err { margin: 6px 0 0; }

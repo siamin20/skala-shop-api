@@ -1,3 +1,6 @@
+import { useState } from 'react'
+import QuantityDialog from './QuantityDialog.jsx'
+
 const won = (n) => n.toLocaleString('ko-KR')
 
 /**
@@ -73,6 +76,7 @@ export default function MyPage({ me, orders, addresses, busy, onCancel }) {
                 <div className="order-actions">
                   {/* 수량을 지정해 일부만 취소한다. 환급액은 서버가 실제 결제액으로 계산한다. */}
                   <CancelControl
+                    itemName={item.productName}
                     max={item.quantity}
                     busy={busy}
                     onCancel={(q) => onCancel(item.productId, q)}
@@ -97,22 +101,35 @@ export default function MyPage({ me, orders, addresses, busy, onCancel }) {
  *
  * <p>전량 취소 버튼을 따로 둔다. 대부분은 전부 취소하는데 매번 숫자를 맞추게 하면
  * 번거롭다. 부분 취소는 수량을 직접 정한다.
+ *
+ * <p>수량 입력은 브라우저 {@code prompt}가 아니라 자체 창을 쓴다. 이유는
+ * {@link QuantityDialog}에 적어두었다. (D48)
  */
-function CancelControl({ max, busy, onCancel }) {
+function CancelControl({ itemName, max, busy, onCancel }) {
+  const [asking, setAsking] = useState(false)
+
   return (
     <div className="cancel-row">
       <button className="line tiny" disabled={busy} onClick={() => onCancel(max)}>
         전체 취소
       </button>
+
+      {/* 1개짜리 주문에는 부분 취소가 의미 없다. 전체 취소와 같은 동작이 된다. */}
       {max > 1 && (
-        <button className="text-link" disabled={busy} onClick={() => {
-          const input = prompt(`취소할 수량 (1~${max})`, '1')
-          const q = Number(input)
-          if (q >= 1 && q <= max) onCancel(q)
-        }}>
+        <button className="text-link" disabled={busy} onClick={() => setAsking(true)}>
           부분 취소
         </button>
       )}
+
+      <QuantityDialog
+        open={asking}
+        title="몇 개를 취소할까요?"
+        itemName={itemName}
+        max={max}
+        busy={busy}
+        onCancel={() => setAsking(false)}
+        onConfirm={(q) => { setAsking(false); onCancel(q) }}
+      />
     </div>
   )
 }
