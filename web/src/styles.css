@@ -212,8 +212,13 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .topbar.up { transform: translateY(-100%); }
 .topbar-row {
   max-width: 1080px; margin: 0 auto; padding: 11px 14px;
-  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 10px;
 }
+/* 로고가 정확히 가운데 오게 한다. flex + space-between으로 두면
+   좌우 버튼 개수가 달라 로고가 한쪽으로 밀린다. */
+.topbar-row > :first-child { justify-self: start; }
+.topbar-row > .brand-btn { justify-self: center; }
+.topbar-row > .top-right { justify-self: end; }
 .topbar-title {
   max-width: 1080px; margin: 0 auto; padding: 0 16px 8px;
   font-size: 21px; font-weight: 800; letter-spacing: -0.6px;
@@ -515,3 +520,22 @@ input.invalid { border-color: var(--sale); }
 .rank-info b { font-size: 14px; }
 
 .icon-btn.on { background: var(--soft); color: var(--sale); }
+
+/* ── 배너 로테이션 ── */
+.banner-swap { animation: swapIn .45s cubic-bezier(.2,.9,.3,1); }
+@keyframes swapIn { from { opacity: 0; transform: translateY(8px) } }
+.banner h2 em { font-style: normal; color: #ff6b8a; }
+.banner p s { color: #8b8b96; margin-right: 8px; }
+.banner p b { font-size: 16px; }
+.banner-left { margin-left: 10px; font-size: 12px; color: #ffb3c4; }
+.banner-dots { display: flex; gap: 5px; margin: 10px 0 12px; }
+.banner-dots i { width: 5px; height: 5px; border-radius: 50%; background: #5a5a66; }
+.banner-dots i.on { background: #ff6b8a; width: 14px; border-radius: 3px; }
+
+/* ── 할인율 ── */
+.sale-mini-price em { font-style: normal; color: var(--sale); font-weight: 800; margin-right: 5px; }
+.sale-mini-list { display: block; font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+.sale-price-row { display: flex; align-items: baseline; gap: 7px; margin-top: 4px; }
+.sale-price-row .rate { font-style: normal; color: var(--sale); font-weight: 800; font-size: 15px; }
+.sale-price-row b { font-size: 15px; }
+.sale-price-row s { font-size: 12.5px; color: var(--muted); }

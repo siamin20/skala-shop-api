@@ -1,37 +1,44 @@
 /**
- * SKALA BEAUTY 워드마크.
+ * SKALA BEAUTY 워드마크. (D44)
  *
  * <p>SK의 공식 로고를 가져다 쓰지 않았다. 실제 기업 상표를 복제하는 것은
  * 과제물이라 해도 적절하지 않아서, 이름만 빌려 새로 그렸다.
  *
- * <p>모양은 뷰티 커머스의 관례를 따랐다. 둥근 사각형 안의 모노그램과
- * 자간을 넓힌 워드마크는 이 업계에서 흔한 조합이다. 그라디언트는
- * 핑크에서 코럴로 흐르게 해 화장품 카테고리의 색감을 맞췄다.
+ * <h2>왜 다시 그렸나</h2>
  *
- * <p>SVG로 둔 이유는 이미지 파일보다 다루기 쉬워서다. 색과 크기를 코드에서 바꿀 수 있고
- * 어느 해상도에서 캡처해도 글자가 뭉개지지 않는다.
+ * <p>처음에는 둥근 사각형 안에 알파벳 S를 넣었다. 흔하고 뷰티와 아무 관련이 없었다.
+ * 로고는 <b>무엇을 파는 곳인지</b>를 한눈에 말해야 한다.
+ *
+ * <p>꽃잎 네 장을 겹친 모양으로 바꿨다. 뷰티·코스메틱 브랜드가 즐겨 쓰는 형태이고,
+ * 가운데가 비어 있어 작은 크기에서도 형태가 뭉개지지 않는다.
  */
 export default function Brand({ size = 'md' }) {
   const big = size === 'lg'
-  const box = big ? 44 : 30
-  const title = big ? 30 : 19
+  const box = big ? 40 : 28
+  const title = big ? 28 : 18
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: big ? 12 : 9 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: big ? 11 : 8 }}>
       <svg width={box} height={box} viewBox="0 0 48 48" aria-hidden="true">
         <defs>
-          <linearGradient id="skala-mark" x1="0" y1="0" x2="1" y2="1">
+          <linearGradient id="skala-petal" x1="0" y1="0" x2="1" y2="1">
             <stop offset="0%" stopColor="#ff4d7e" />
             <stop offset="100%" stopColor="#ff9a5c" />
           </linearGradient>
         </defs>
-        {/* 둥근 사각형. rx를 크게 줘서 앱 아이콘 같은 인상을 만든다. */}
-        <rect x="0" y="0" width="48" height="48" rx="14" fill="url(#skala-mark)" />
-        {/* 모노그램 S. 화장품 용기의 곡선을 연상시키도록 끝을 둥글게 처리했다. */}
-        <path
-          d="M31.5 17.2c-1.6-2.2-4.2-3.5-7.3-3.5-4.6 0-7.6 2.4-7.6 5.9 0 3.1 2.2 4.8 6.6 5.7l2.4.5c2.3.5 3.2 1.2 3.2 2.5 0 1.7-1.7 2.8-4.4 2.8-2.7 0-4.8-1.1-6.1-3.1l-3.4 2.6c1.9 2.9 5.2 4.6 9.3 4.6 5 0 8.3-2.5 8.3-6.3 0-3.3-2.1-5.1-6.8-6.1l-2.4-.5c-2.1-.4-3-1.1-3-2.3 0-1.5 1.5-2.5 3.9-2.5 2.2 0 3.9.9 4.9 2.4z"
-          fill="#fff"
-        />
+
+        {/* 꽃잎 네 장. 같은 모양을 90도씩 돌려 겹친다.
+            투명도를 조금 낮춰 겹친 부분이 진해지면서 깊이가 생긴다. */}
+        <g fill="url(#skala-petal)" opacity="0.88">
+          <ellipse cx="24" cy="14" rx="8.5" ry="13" />
+          <ellipse cx="24" cy="34" rx="8.5" ry="13" />
+          <ellipse cx="14" cy="24" rx="13" ry="8.5" />
+          <ellipse cx="34" cy="24" rx="13" ry="8.5" />
+        </g>
+
+        {/* 가운데를 흰색으로 비운다. 작은 크기에서 형태가 뭉개지지 않게 하는 장치다. */}
+        <circle cx="24" cy="24" r="5.5" fill="#fff" />
+        <circle cx="24" cy="24" r="2.2" fill="url(#skala-petal)" />
       </svg>
 
       <div style={{ lineHeight: 1.05 }}>
@@ -39,21 +46,18 @@ export default function Brand({ size = 'md' }) {
           style={{
             fontSize: title,
             fontWeight: 800,
-            letterSpacing: '-0.5px',
-            background: 'linear-gradient(92deg,#ff3d6e,#ff8a5c)',
-            WebkitBackgroundClip: 'text',
-            backgroundClip: 'text',
-            color: 'transparent',
+            letterSpacing: '-0.4px',
+            color: '#17171c',
           }}
         >
           SKALA
         </div>
         <div
           style={{
-            fontSize: big ? 11 : 9,
+            fontSize: big ? 10 : 8.5,
             fontWeight: 700,
-            letterSpacing: big ? '6px' : '4.5px',
-            color: '#b9b9c4',
+            letterSpacing: big ? '5.5px' : '4px',
+            color: '#ff4d7e',
             marginTop: 1,
           }}
         >

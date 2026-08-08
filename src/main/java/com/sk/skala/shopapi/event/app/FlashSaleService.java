@@ -115,7 +115,9 @@ public class FlashSaleService {
                 .orElseThrow(() -> new BusinessException(
                         ErrorCode.DATA_NOT_FOUND, "고객을 찾을 수 없습니다: " + customerId));
 
-        Money totalPrice = product.totalPriceOf(request.quantity());
+        // 정가가 아니라 특가로 계산한다. "특가"라고 부르면서 정가를 받으면
+        // 화면에 표시한 할인율이 거짓이 된다. (D42)
+        Money totalPrice = sale.totalPriceOf(request.quantity());
         customer.deductPoint(totalPrice);
 
         // 일반 주문과 같은 적립률을 적용한다. (D31)

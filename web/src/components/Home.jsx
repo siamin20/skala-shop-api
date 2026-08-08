@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import ProductArt from './ProductArt.jsx'
 
 const won = (n) => n.toLocaleString('ko-KR')
@@ -21,7 +22,27 @@ const won = (n) => n.toLocaleString('ko-KR')
  * </ol>
  */
 export default function Home({ sales, best, categories, onSelectCategory, onGoEvent, onProduct }) {
-  const liveSale = sales.find((s) => s.remaining > 0)
+  const live = sales.filter((s) => s.remaining > 0)
+
+  /**
+   * 배너에 특가를 돌아가며 보여준다. (D40)
+   *
+   * <p>특가가 여러 개인데 하나만 띄우면 나머지는 아무도 보지 못한다.
+   * 배너 자리는 하나뿐이므로 시간으로 나눠 쓴다.
+   *
+   * <p>4초로 뒀다. 더 짧으면 읽기 전에 넘어가고, 더 길면 두 번째 특가를 보기 전에
+   * 사용자가 스크롤을 내려버린다.
+   */
+  const [slot, setSlot] = useState(0)
+
+  useEffect(() => {
+    if (live.length <= 1) return
+    const id = setInterval(() => setSlot((n) => (n + 1) % live.length), 4000)
+    // 특가 목록이 바뀌면 타이머를 다시 건다. 정리하지 않으면 타이머가 쌓인다.
+    return () => clearInterval(id)
+  }, [live.length])
+
+  const liveSale = live[slot % Math.max(live.length, 1)]
 
   return (
     <div className="home">
@@ -30,12 +51,38 @@ export default function Home({ sales, best, categories, onSelectCategory, onGoEv
                onKeyDown={(e) => e.key === 'Enter' && onGoEvent()}>
         <div className="banner-copy">
           <span className="banner-tag">TODAY ONLY</span>
-          <h2>오늘의 특가</h2>
-          <p>{liveSale ? liveSale.name : '준비 중인 특가가 있어요'}</p>
+
+          {liveSale ? (
+            <>
+              {/* key를 바꿔 다시 마운트시킨다. 그래야 넘어갈 때마다 등장 효과가 다시 돈다. */}
+              <div key={liveSale.id} className="banner-swap">
+                <h2>
+                  <em>{liveSale.discountRate}%</em> {liveSale.name}
+                </h2>
+                <p>
+                  <s>{won(liveSale.listPrice)}원</s>
+                  <b>{won(liveSale.price)}원</b>
+                  <span className="banner-left">{liveSale.remaining}개 남음</span>
+                </p>
+              </div>
+
+              {live.length > 1 && (
+                <div className="banner-dots" aria-hidden="true">
+                  {live.map((s, i) => <i key={s.id} className={i === slot ? 'on' : ''} />)}
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <h2>오늘의 특가</h2>
+              <p>준비 중인 특가가 있어요</p>
+            </>
+          )}
+
           <span className="banner-cta">지금 보러 가기 →</span>
         </div>
         <div className="banner-art">
-          {liveSale && <ProductArt name={liveSale.productName} size="100%" />}
+          {liveSale && <ProductArt key={liveSale.id} name={liveSale.productName} size="100%" />}
         </div>
       </section>
 
@@ -64,7 +111,11 @@ export default function Home({ sales, best, categories, onSelectCategory, onGoEv
                 <div key={s.id} className="sale-mini">
                   <div className="sale-mini-art"><ProductArt name={s.productName} /></div>
                   <p className="sale-mini-name">{s.productName}</p>
-                  <div className="sale-mini-price">{won(s.price)}원</div>
+                  <div className="sale-mini-price">
+                    {s.discountRate > 0 && <em>{s.discountRate}%</em>}
+                    {won(s.price)}원
+                  </div>
+                  {s.discountRate > 0 && <s className="sale-mini-list">{won(s.listPrice)}원</s>}
                   <div className="gauge"><i style={{ width: `${rate}%` }} /></div>
                   <span className="remain small">
                     {s.remaining > 0 ? <>{s.remaining}개 남음</> : '품절'}

@@ -62,8 +62,11 @@ export default function FlashSales({ sales, onJoin, busy, onRefresh }) {
             <div className="event-top">
               <div style={{ minWidth: 0 }}>
                 <h3>{sale.name}</h3>
-                <div className="muted small">
-                  {sale.productName} · {won(sale.price)}P
+                <div className="muted small">{sale.productName}</div>
+                <div className="sale-price-row">
+                  {sale.discountRate > 0 && <em className="rate">{sale.discountRate}%</em>}
+                  <b>{won(sale.price)}원</b>
+                  {sale.discountRate > 0 && <s>{won(sale.listPrice)}원</s>}
                 </div>
               </div>
 
