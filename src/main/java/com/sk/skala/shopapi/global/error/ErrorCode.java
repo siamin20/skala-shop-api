@@ -53,6 +53,15 @@ public enum ErrorCode {
      */
     DATA_IN_USE(HttpStatus.CONFLICT, "다른 데이터가 참조하고 있어 삭제할 수 없습니다"),
 
+    /**
+     * 멱등성 키를 잘못 사용했다. (D20)
+     *
+     * <p>남이 쓴 키를 재사용했거나, 같은 키로 내용이 다른 요청을 보낸 경우다.
+     * 후자를 막지 않으면 "5,000원 충전"에 쓴 키로 "50,000원 충전"을 보내
+     * 실행되지 않은 채 성공 응답만 받아낼 수 있다.
+     */
+    IDEMPOTENCY_KEY_REUSED(HttpStatus.CONFLICT, "이미 사용된 멱등성 키입니다"),
+
     /** 보유 포인트가 주문 금액보다 적다. */
     INSUFFICIENT_POINT(HttpStatus.CONFLICT, "포인트가 부족합니다"),
 

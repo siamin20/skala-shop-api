@@ -3,10 +3,13 @@ package com.sk.skala.shopapi.order.api;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.sk.skala.shopapi.global.idempotency.IdempotentExecutor;
 import com.sk.skala.shopapi.global.security.AuthenticatedCustomer;
 import com.sk.skala.shopapi.order.app.OrderService;
 import com.sk.skala.shopapi.order.dto.OrderListResponse;
@@ -15,6 +18,7 @@ import com.sk.skala.shopapi.order.dto.OrderRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
 import lombok.RequiredArgsConstructor;
 
 /**
@@ -45,10 +49,21 @@ import lombok.RequiredArgsConstructor;
 @Tag(name = "주문", description = "상품 주문·취소·조회")
 @RestController
 @RequestMapping("/api/orders")
+// 헤더의 @NotBlank는 메서드 파라미터 검증이라 @Validated가 있어야 동작한다.
+@Validated
 @RequiredArgsConstructor
 public class OrderController {
 
+    /**
+     * 멱등성 키 헤더 이름. 업계 관례를 따른다(Stripe·PayPal 등이 같은 이름을 쓴다).
+     *
+     * <p>D20: 주문과 취소는 재시도 시 중복 실행되면 포인트가 두 번 움직인다.
+     * 요청 내용만으로는 재시도와 새 주문을 구분할 수 없어 키가 필요하다.
+     */
+    private static final String IDEMPOTENCY_KEY = "Idempotency-Key";
+
     private final OrderService orderService;
+    private final IdempotentExecutor idempotentExecutor;
 
     /**
      * 내 주문 목록을 조회한다.
@@ -68,13 +83,18 @@ public class OrderController {
      * <p>응답으로 변경 후 <b>전체 상태</b>를 돌려준다. 바뀐 항목만 주면 클라이언트가
      * 남은 포인트와 목록을 다시 조회해야 해서 요청이 한 번 더 나간다.
      */
-    @Operation(summary = "상품 주문", description = "포인트를 차감하고 주문 항목에 수량을 누적한다.")
+    @Operation(
+            summary = "상품 주문",
+            description = "포인트를 차감하고 주문 항목에 수량을 누적한다. Idempotency-Key 헤더가 필요하다.")
     @PostMapping
     public OrderListResponse placeOrder(
             @AuthenticationPrincipal AuthenticatedCustomer principal,
+            @RequestHeader(IDEMPOTENCY_KEY) @NotBlank(message = "Idempotency-Key 헤더는 필수입니다") String idempotencyKey,
             @Valid @RequestBody OrderRequest request) {
 
-        return orderService.placeOrder(principal.customerId(), request);
+        return idempotentExecutor.execute(
+                idempotencyKey, principal.customerId(), request, OrderListResponse.class,
+                () -> orderService.placeOrder(principal.customerId(), request));
     }
 
     /**
@@ -84,12 +104,17 @@ public class OrderController {
      * 수량을 지정해 일부만 취소하므로 "자원을 삭제한다"는 의미와 맞지 않는다.
      * 전량 취소로 수량이 0이 되면 항목이 사라지지만, 그건 결과이지 요청의 의미가 아니다.
      */
-    @Operation(summary = "주문 취소", description = "수량만큼 취소하고 결제한 금액을 환급한다.")
+    @Operation(
+            summary = "주문 취소",
+            description = "수량만큼 취소하고 결제한 금액을 환급한다. Idempotency-Key 헤더가 필요하다.")
     @PostMapping("/cancel")
     public OrderListResponse cancelOrder(
             @AuthenticationPrincipal AuthenticatedCustomer principal,
+            @RequestHeader(IDEMPOTENCY_KEY) @NotBlank(message = "Idempotency-Key 헤더는 필수입니다") String idempotencyKey,
             @Valid @RequestBody OrderRequest request) {
 
-        return orderService.cancelOrder(principal.customerId(), request);
+        return idempotentExecutor.execute(
+                idempotencyKey, principal.customerId(), request, OrderListResponse.class,
+                () -> orderService.cancelOrder(principal.customerId(), request));
     }
 }

@@ -122,6 +122,7 @@ class SecurityRuleTest {
         @DisplayName("포인트 충전")
         void chargePoint() throws Exception {
             mockMvc.perform(post("/api/customers/skala01/points")
+                            .header("Idempotency-Key", java.util.UUID.randomUUID().toString())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("{\"amount\":5000}"))
                     .andExpect(status().isUnauthorized());
@@ -214,6 +215,7 @@ class SecurityRuleTest {
         @DisplayName("남의 계정에 포인트 충전")
         void othersCharge() throws Exception {
             mockMvc.perform(post("/api/customers/skala02/points")
+                            .header("Idempotency-Key", java.util.UUID.randomUUID().toString())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("{\"amount\":5000}"))
                     .andExpect(status().isForbidden());

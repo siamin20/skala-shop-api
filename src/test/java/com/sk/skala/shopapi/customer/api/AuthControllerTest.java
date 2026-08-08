@@ -187,11 +187,34 @@ class AuthControllerTest {
     }
 
     @Test
-    @DisplayName("위조된 토큰은 거부한다")
-    void rejectTamperedToken() throws Exception {
+    @DisplayName("페이로드를 변조한 토큰은 거부한다")
+    void rejectTamperedPayload() throws Exception {
         String token = login("skala01");
-        // 마지막 글자를 바꿔 서명을 깨뜨린다
-        String tampered = token.substring(0, token.length() - 1) + (token.endsWith("A") ? "B" : "A");
+        String[] parts = token.split("\\.");
+
+        // 페이로드(2번째 조각)의 첫 글자를 바꾼다. 서명은 헤더+페이로드로 계산되므로
+        // 페이로드가 달라지면 서명 검증이 실패한다.
+        //
+        // 처음에는 토큰 맨 끝 글자를 바꿨는데 검증을 통과했다.
+        // HS256 서명은 32바이트 = base64url 43글자인데 43×6=258비트라
+        // 마지막 글자의 하위 2비트는 디코딩 시 버려진다. 그 비트만 바꾸면 서명 바이트가 그대로다.
+        char first = parts[1].charAt(0);
+        parts[1] = (first == 'e' ? 'f' : 'e') + parts[1].substring(1);
+        String tampered = String.join(".", parts);
+
+        mockMvc.perform(get("/api/auth/me").header("Authorization", "Bearer " + tampered))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("서명을 다른 값으로 바꾼 토큰은 거부한다")
+    void rejectTamperedSignature() throws Exception {
+        String token = login("skala01");
+        String[] parts = token.split("\\.");
+
+        // 서명 조각을 통째로 다른 값으로 바꾼다
+        parts[2] = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+        String tampered = String.join(".", parts);
 
         mockMvc.perform(get("/api/auth/me").header("Authorization", "Bearer " + tampered))
                 .andExpect(status().isUnauthorized());

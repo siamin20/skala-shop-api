@@ -55,6 +55,11 @@ shop:
     # 재로그인 없이 유지할 기간. HttpOnly 쿠키로만 오간다.
     refresh-validity: ${JWT_REFRESH_VALIDITY:14d}
 
+  idempotency:
+    # 키 보관 기간. 짧으면 늦은 재시도가 중복 실행되고, 길면 테이블이 커진다.
+    # 만료 행을 지우는 배치는 P5에서 다룬다. (D20)
+    validity: ${IDEMPOTENCY_VALIDITY:24h}
+
   admin:
     # 값이 없으면 관리자 계정을 만들지 않는다. 기본값을 두면 설정을 잊었을 때
     # 모두가 아는 비밀번호로 관리자가 생긴다.

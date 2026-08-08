@@ -66,6 +66,16 @@ class OrderControllerTest {
         return "{\"productId\":%d,\"quantity\":%d}".formatted(무선마우스Id, quantity);
     }
 
+    /**
+     * 매번 새 멱등성 키를 만든다.
+     *
+     * <p>테스트끼리 키를 공유하면 두 번째 테스트가 첫 번째의 저장된 응답을 받아
+     * 실제로는 실행되지 않은 채 통과한다. 그런 테스트는 아무것도 검증하지 못한다.
+     */
+    private String newKey() {
+        return java.util.UUID.randomUUID().toString();
+    }
+
     @Nested
     @DisplayName("주문과 취소")
     @WithMockCustomer("skala01")
@@ -75,6 +85,7 @@ class OrderControllerTest {
         @DisplayName("주문하면 포인트가 차감되고 변경 후 전체 상태를 돌려준다")
         void placeOrder() throws Exception {
             mockMvc.perform(post("/api/orders")
+                            .header("Idempotency-Key", newKey())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(orderBody(2)))
                     .andExpect(status().isOk())
@@ -88,9 +99,11 @@ class OrderControllerTest {
         @DisplayName("취소하면 포인트가 환급된다")
         void cancelOrder() throws Exception {
             mockMvc.perform(post("/api/orders")
+                    .header("Idempotency-Key", newKey())
                     .contentType(MediaType.APPLICATION_JSON).content(orderBody(2)));
 
             mockMvc.perform(post("/api/orders/cancel")
+                            .header("Idempotency-Key", newKey())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(orderBody(1)))
                     .andExpect(status().isOk())
@@ -101,6 +114,7 @@ class OrderControllerTest {
         @DisplayName("내 주문 목록을 조회한다")
         void getMyOrders() throws Exception {
             mockMvc.perform(post("/api/orders")
+                    .header("Idempotency-Key", newKey())
                     .contentType(MediaType.APPLICATION_JSON).content(orderBody(1)));
 
             mockMvc.perform(get("/api/orders"))
@@ -113,6 +127,7 @@ class OrderControllerTest {
         @DisplayName("포인트가 부족하면 409")
         void insufficientPoint() throws Exception {
             mockMvc.perform(post("/api/orders")
+                            .header("Idempotency-Key", newKey())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(orderBody(100)))
                     .andExpect(status().isConflict())
@@ -123,6 +138,7 @@ class OrderControllerTest {
         @DisplayName("없는 상품은 404")
         void productNotFound() throws Exception {
             mockMvc.perform(post("/api/orders")
+                            .header("Idempotency-Key", newKey())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("{\"productId\":9999,\"quantity\":1}"))
                     .andExpect(status().isNotFound())
@@ -133,6 +149,7 @@ class OrderControllerTest {
         @DisplayName("수량 0 이하는 400")
         void rejectNonPositiveQuantity() throws Exception {
             mockMvc.perform(post("/api/orders")
+                            .header("Idempotency-Key", newKey())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(orderBody(0)))
                     .andExpect(status().isBadRequest())
@@ -151,6 +168,7 @@ class OrderControllerTest {
             // OrderRequest에 customerId 필드가 없으므로 Jackson이 무시한다.
             // 만약 필드가 생기면 이 테스트가 깨져 남의 아이디로 주문할 수 있게 됐음을 알린다.
             mockMvc.perform(post("/api/orders")
+                            .header("Idempotency-Key", newKey())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("{\"customerId\":\"skala02\",\"productId\":%d,\"quantity\":1}"
                                     .formatted(무선마우스Id)))
@@ -165,6 +183,7 @@ class OrderControllerTest {
         @WithMockCustomer("skala01")
         void otherCustomerUnaffected() throws Exception {
             mockMvc.perform(post("/api/orders")
+                    .header("Idempotency-Key", newKey())
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("{\"customerId\":\"skala02\",\"productId\":%d,\"quantity\":1}"
                             .formatted(무선마우스Id)));
@@ -179,6 +198,7 @@ class OrderControllerTest {
         @WithAnonymousUser
         void requiresLogin() throws Exception {
             mockMvc.perform(post("/api/orders")
+                            .header("Idempotency-Key", newKey())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(orderBody(1)))
                     .andExpect(status().isUnauthorized())

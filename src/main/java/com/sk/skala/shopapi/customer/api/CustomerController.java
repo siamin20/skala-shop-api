@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -22,6 +23,7 @@ import com.sk.skala.shopapi.customer.dto.PointChargeRequest;
 import com.sk.skala.shopapi.customer.dto.PointUpdateRequest;
 import com.sk.skala.shopapi.customer.dto.SignUpRequest;
 import com.sk.skala.shopapi.global.common.PageResponse;
+import com.sk.skala.shopapi.global.idempotency.IdempotentExecutor;
 import com.sk.skala.shopapi.global.security.AccessGuard;
 import com.sk.skala.shopapi.global.security.AuthenticatedCustomer;
 import com.sk.skala.shopapi.order.dto.OrderListResponse;
@@ -29,6 +31,7 @@ import com.sk.skala.shopapi.order.dto.OrderListResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
@@ -67,8 +70,12 @@ import lombok.RequiredArgsConstructor;
 @Validated
 public class CustomerController {
 
+    /** 멱등성 키 헤더. 충전은 재시도 시 중복 실행되면 포인트가 두 번 늘어난다. (D20) */
+    private static final String IDEMPOTENCY_KEY = "Idempotency-Key";
+
     private final CustomerService customerService;
     private final AccessGuard accessGuard;
+    private final IdempotentExecutor idempotentExecutor;
 
     /**
      * 고객 목록을 페이지 단위로 조회한다.
@@ -134,11 +141,14 @@ public class CustomerController {
     public CustomerResponse chargePoint(
             @AuthenticationPrincipal AuthenticatedCustomer principal,
             @PathVariable String customerId,
+            @RequestHeader(IDEMPOTENCY_KEY) @NotBlank(message = "Idempotency-Key 헤더는 필수입니다") String idempotencyKey,
             @Valid @RequestBody PointChargeRequest request) {
 
         accessGuard.requireSelfOrAdmin(principal, customerId);
 
-        return customerService.chargePoint(customerId, request);
+        return idempotentExecutor.execute(
+                idempotencyKey, principal.customerId(), request, CustomerResponse.class,
+                () -> customerService.chargePoint(customerId, request));
     }
 
     /**
