@@ -135,7 +135,14 @@ export const api = {
   },
 
   me: () => request('/api/auth/me'),
-  products: (page = 0, size = 20) => request(`/api/products?page=${page}&size=${size}`),
+  products: ({ page = 0, size = 10, sort = 'LATEST', category, subcategory } = {}) => {
+    const q = new URLSearchParams({ page, size, sort })
+    if (category) q.set('category', category)
+    if (subcategory) q.set('subcategory', subcategory)
+    return request(`/api/products?${q}`)
+  },
+
+  categories: () => request('/api/products/categories'),
   orders: () => request('/api/orders'),
 
   order: (productId, quantity) =>
@@ -143,6 +150,13 @@ export const api = {
 
   cancel: (productId, quantity) =>
     request('/api/orders/cancel', { method: 'POST', body: { productId, quantity } }),
+
+  // ── 배송지 (D34) ──
+  address: () => request('/api/delivery-address'),
+  saveAddress: (body) => request('/api/delivery-address', { method: 'PUT', body }),
+
+  // ── 카드 결제 (D31, D32) ──
+  checkout: (body) => request('/api/orders/checkout', { method: 'POST', body }),
 
   charge: (customerId, amount) =>
     request(`/api/customers/${encodeURIComponent(customerId)}/points`, {

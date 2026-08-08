@@ -69,7 +69,7 @@ public class SecurityConfig {
                         // 명세 536p의 로그인 경로. 인증 전에 호출되므로 열어야 한다. (D27)
                         .requestMatchers(HttpMethod.POST, "/api/customers/login").permitAll()
                         // 상품 조회는 비로그인 방문자도 볼 수 있어야 쇼핑몰이 성립한다.
-                        .requestMatchers(HttpMethod.GET, "/api/products", "/api/products/*").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/products", "/api/products/*", "/api/products/categories").permitAll()
 
                         // 선착순 이벤트 조회는 공개다. 비로그인 방문자가 어떤 이벤트가
                         // 열리는지 볼 수 없으면 참여할 마음이 생기지 않는다.

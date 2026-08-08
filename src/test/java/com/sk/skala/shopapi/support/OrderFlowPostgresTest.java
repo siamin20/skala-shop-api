@@ -58,14 +58,15 @@ class OrderFlowPostgresTest extends PostgresIntegrationTest {
     @Autowired
     private JdbcTemplate jdbc;
 
-    private Long 무선마우스Id;
+    private Long 토너패드Id;
 
     @BeforeEach
     void setUp() {
         // 상품은 V2 마이그레이션이 넣어둔 것을 그대로 쓴다. 지우고 다시 넣으면
         // 컨테이너를 공유하는 다른 테스트가 영향을 받는다.
-        무선마우스Id = jdbc.queryForObject(
-                "SELECT id FROM product WHERE product_name = '무선마우스'", Long.class);
+        토너패드Id = jdbc.queryForObject(
+                "SELECT id FROM product WHERE product_name = '수분 진정 토너패드 70매'",
+                Long.class);
 
         customerRepository.save(new Customer("pgtest01", "$2a$10$h", Money.of(1_000_000)));
     }
@@ -75,7 +76,7 @@ class OrderFlowPostgresTest extends PostgresIntegrationTest {
     }
 
     private String body(int quantity) {
-        return "{\"productId\":%d,\"quantity\":%d}".formatted(무선마우스Id, quantity);
+        return "{\"productId\":%d,\"quantity\":%d}".formatted(토너패드Id, quantity);
     }
 
     @Test
@@ -84,14 +85,14 @@ class OrderFlowPostgresTest extends PostgresIntegrationTest {
         mockMvc.perform(post("/api/orders").header("Idempotency-Key", key())
                         .contentType(MediaType.APPLICATION_JSON).content(body(3)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.point").value(955_000))
-                .andExpect(jsonPath("$.totalSpent").value(45_000));
+                .andExpect(jsonPath("$.point").value(946_000))
+                .andExpect(jsonPath("$.totalSpent").value(54_000));
 
         // 값을 SQL로 직접 확인한다. JPA를 거치면 영속성 컨텍스트의 값을 볼 수도 있어
         // "DB에 실제로 무엇이 들어갔는가"를 보장하지 못한다.
         Long point = jdbc.queryForObject(
                 "SELECT customer_point FROM customer WHERE customer_id = 'pgtest01'", Long.class);
-        assertThat(point).isEqualTo(955_000L);
+        assertThat(point).isEqualTo(946_000L);
     }
 
     @Test
@@ -123,12 +124,12 @@ class OrderFlowPostgresTest extends PostgresIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON).content(body(1)))
                 .andExpect(status().isOk())
                 // 45,000원 중 1개분 15,000원만 돌아온다
-                .andExpect(jsonPath("$.point").value(970_000));
+                .andExpect(jsonPath("$.point").value(964_000));
 
         Long total = jdbc.queryForObject(
                 "SELECT total_amount FROM order_item WHERE customer_id = 'pgtest01'", Long.class);
         // 금액은 BIGINT다. 실수형이었다면 여기서 오차가 드러난다. (D1)
-        assertThat(total).isEqualTo(30_000L);
+        assertThat(total).isEqualTo(36_000L);
     }
 
     /**
@@ -160,7 +161,7 @@ class OrderFlowPostgresTest extends PostgresIntegrationTest {
         assertThat(replayed).isEqualTo(first);
 
         // 한글 상품명이 들어 있는 JSON이다. 인코딩이 어긋나면 여기서 드러난다.
-        assertThat(replayed).contains("무선마우스");
+        assertThat(replayed).contains("수분 진정 토너패드 70매");
 
         // 컬럼에 번호가 아니라 본문 자체가 들어 있어야 한다.
         // Large Object로 저장됐다면 여기에 pg_largeobject를 가리키는 숫자만 남는다.

@@ -82,8 +82,8 @@ class MigrationCompatibilityTest extends PostgresIntegrationTest {
                     String.class);
 
             assertThat(tables)
-                    .containsExactly(
-                            "customer", "flash_sale", "idempotency_key", "order_item", "product");
+                    .containsExactly("customer", "delivery_address", "flash_sale",
+                            "idempotency_key", "order_item", "product");
         }
 
         @Test
@@ -115,9 +115,12 @@ class MigrationCompatibilityTest extends PostgresIntegrationTest {
 
             // 인코딩이 어긋나면 예외 없이 '???'나 깨진 글자로 저장된다.
             // 조용히 잘못되는 종류라 눈으로 확인할 기회가 없다.
+            // V10이 명세 예시 상품을 뷰티 상품으로 교체했다. 행을 지우지 않고
+            // 이름만 바꿔서 id와 주문 내역이 그대로 유지된다. (D29)
             assertThat(names)
-                    .startsWith("무선마우스", "블루투스키보드", "USB허브")
-                    .contains("세라마이드 수분 크림 50ml", "한정판 골드 앰플 세트");
+                    .doesNotContain("무선마우스", "블루투스키보드", "USB허브")
+                    .contains("수분 진정 토너패드 70매", "세라마이드 수분 크림 50ml",
+                            "한정판 골드 앰플 세트");
         }
 
         @Test
@@ -148,10 +151,11 @@ class MigrationCompatibilityTest extends PostgresIntegrationTest {
         @DisplayName("가격이 정수 그대로 보존된다")
         void pricesArePreserved() {
             Long price = jdbc.queryForObject(
-                    "SELECT product_price FROM product WHERE product_name = '무선마우스'", Long.class);
+                    "SELECT product_price FROM product WHERE product_name = '수분 진정 토너패드 70매'",
+                    Long.class);
 
             // BIGINT로 저장한다. 실수형이면 여기서 15000.0이 되거나 반올림 오차가 생긴다. (D1)
-            assertThat(price).isEqualTo(15_000L);
+            assertThat(price).isEqualTo(18_000L);
         }
     }
 
@@ -172,7 +176,7 @@ class MigrationCompatibilityTest extends PostgresIntegrationTest {
             jdbc.update("INSERT INTO customer (customer_id, customer_password, customer_point, "
                     + "customer_role) VALUES ('uniq01', '$2a$10$h', 0, 'CUSTOMER')");
             Long productId = jdbc.queryForObject(
-                    "SELECT id FROM product WHERE product_name = '무선마우스'", Long.class);
+                    "SELECT id FROM product WHERE product_name = '수분 진정 토너패드 70매'", Long.class);
 
             jdbc.update("INSERT INTO order_item (customer_id, product_id, quantity, total_amount) "
                     + "VALUES ('uniq01', ?, 1, 15000)", productId);
@@ -189,7 +193,7 @@ class MigrationCompatibilityTest extends PostgresIntegrationTest {
         @DisplayName("없는 고객의 주문 항목은 만들 수 없다")
         void orderItemRequiresExistingCustomer() {
             Long productId = jdbc.queryForObject(
-                    "SELECT id FROM product WHERE product_name = 'USB허브'", Long.class);
+                    "SELECT id FROM product WHERE product_name = '딥클렌징 오일 200ml'", Long.class);
 
             assertThatThrownBy(() -> jdbc.update(
                     "INSERT INTO order_item (customer_id, product_id, quantity, total_amount) "
@@ -201,8 +205,9 @@ class MigrationCompatibilityTest extends PostgresIntegrationTest {
         @DisplayName("상품명은 중복될 수 없다")
         void productNameIsUnique() {
             assertThatThrownBy(() -> jdbc.update(
-                    "INSERT INTO product (product_name, product_price, product_stock) "
-                            + "VALUES ('무선마우스', 1, 10)"))
+                    "INSERT INTO product (product_name, product_price, product_stock, "
+                            + "category, subcategory) "
+                            + "VALUES ('수분 진정 토너패드 70매', 1, 10, '기타', '기타')"))
                     .isInstanceOf(DataIntegrityViolationException.class);
         }
 
@@ -212,7 +217,7 @@ class MigrationCompatibilityTest extends PostgresIntegrationTest {
             // 애플리케이션이 먼저 검사하지만 그 검사를 빠뜨린 경로가 하나만 생겨도
             // 음수 재고가 만들어진다. V5의 CHECK 제약이 최종 방어선이다. (D22)
             assertThatThrownBy(() -> jdbc.update(
-                    "UPDATE product SET product_stock = -1 WHERE product_name = '무선마우스'"))
+                    "UPDATE product SET product_stock = -1 WHERE product_name = '수분 진정 토너패드 70매'"))
                     .isInstanceOf(DataIntegrityViolationException.class);
         }
 

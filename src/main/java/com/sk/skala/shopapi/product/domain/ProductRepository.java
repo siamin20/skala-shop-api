@@ -2,6 +2,8 @@ package com.sk.skala.shopapi.product.domain;
 
 import java.util.Optional;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -34,6 +36,31 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
      * @return 있으면 상품, 없으면 빈 값
      */
     Optional<Product> findByName(String name);
+
+    /**
+     * 판매량이 많은 순으로 상품을 조회한다. (D33)
+     *
+     * <p>랭킹을 화면에서 만들 수 없어 서버에 둔다. 프론트가 가진 것은 상품 목록뿐이고
+     * <b>누가 얼마나 팔렸는지는 주문 데이터에만 있다.</b>
+     *
+     * <p>{@code LEFT JOIN}이다. {@code INNER JOIN}으로 하면 <b>한 번도 안 팔린 상품이
+     * 목록에서 사라진다.</b> 신상품이 랭킹 화면에서 아예 보이지 않게 되는 셈이다.
+     *
+     * <p>{@code COALESCE}로 판매량 없는 상품을 0으로 만든다. 없으면 null이 되어
+     * 정렬 순서가 DB 설정에 좌우된다(PostgreSQL은 null을 가장 크게 본다).
+     * 그러면 안 팔린 상품이 맨 앞에 오는 랭킹이 된다.
+     *
+     * <p>집계 쿼리라 페이지 처리를 위해 count 쿼리를 따로 준다.
+     * 지정하지 않으면 Spring Data가 group by가 섞인 count 쿼리를 만들어 실패한다.
+     */
+    @Query(value = """
+            select p from Product p
+            left join OrderItem oi on oi.product = p
+            group by p
+            order by coalesce(sum(oi.quantity), 0) desc, p.id asc
+            """,
+            countQuery = "select count(p) from Product p")
+    Page<Product> findAllOrderBySales(Pageable pageable);
 
     /**
      * 재고를 바꾸기 위해 상품 행을 <b>비관적 락</b>으로 잡고 조회한다. (D22)
@@ -77,4 +104,14 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
      * @param id   제외할 상품 ID (수정 대상 자신)
      */
     boolean existsByNameAndIdNot(String name, Long id);
+
+    /** 대분류로 거른 목록. (D35) */
+    Page<Product> findByCategory(String category, Pageable pageable);
+
+    /** 대분류와 소분류로 거른 목록. */
+    Page<Product> findByCategoryAndSubcategory(String category, String subcategory, Pageable pageable);
+
+    /** 등록된 대분류·소분류 목록. 화면의 탭을 이 값으로 만든다. */
+    @Query("select distinct p.category, p.subcategory from Product p order by p.category, p.subcategory")
+    java.util.List<Object[]> findCategories();
 }

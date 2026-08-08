@@ -56,19 +56,30 @@ public class CheckoutService {
     private final ProductRepository productRepository;
     private final CardPaymentGateway cardPaymentGateway;
     private final RewardPolicy rewardPolicy;
+    private final com.sk.skala.shopapi.delivery.app.DeliveryAddressService deliveryAddressService;
 
     public CheckoutResponse checkout(String customerId, CheckoutRequest request) {
-        // ── 1. 금액을 먼저 계산한다 (트랜잭션 밖) ──
-        Product product = productRepository.findById(request.productId())
-                .orElseThrow(() -> new BusinessException(
-                        ErrorCode.DATA_NOT_FOUND, "상품을 찾을 수 없습니다: " + request.productId()));
+        // ── 0. 배송지를 저장한다 ──
+        // 결제보다 먼저 한다. 결제가 성공했는데 배송지를 못 받으면 어디로 보낼지 모른다.
+        if (request.delivery() != null) {
+            deliveryAddressService.save(customerId, request.delivery());
+        }
 
-        Money total = product.totalPriceOf(request.quantity());
+        // ── 1. 금액을 먼저 계산한다 (트랜잭션 밖) ──
+        Money total = Money.ZERO;
+        for (CheckoutRequest.Item item : request.items()) {
+            Product product = productRepository.findById(item.productId())
+                    .orElseThrow(() -> new BusinessException(
+                            ErrorCode.DATA_NOT_FOUND, "상품을 찾을 수 없습니다: " + item.productId()));
+            total = total.plus(product.totalPriceOf(item.quantity()));
+        }
 
         if (request.paymentMethod() == PaymentMethod.POINT) {
             // 명세의 기본 동작이다. 전액 포인트로 내고 적립은 없다.
-            // 포인트로 낸 금액에 적립하면 포인트가 포인트를 낳는다.
-            OrderListResponse orders = orderService.placeOrder(customerId, request.toOrderRequest());
+            OrderListResponse orders = null;
+            for (CheckoutRequest.Item item : request.items()) {
+                orders = orderService.placeOrder(customerId, item.toOrderRequest());
+            }
             return new CheckoutResponse(orders, total.getAmount(), 0, 0, null, null);
         }
 
@@ -115,8 +126,30 @@ public class CheckoutService {
     protected OrderListResponse applyOrder(String customerId, CheckoutRequest request,
             Money usePoint, Money cardAmount) {
 
-        OrderListResponse orders = orderService.placeOrderWithPayment(
-                customerId, request.toOrderRequest(), usePoint);
+        // 적립금 사용액을 항목별로 나눈다. 첫 항목에 몰아주면 그 항목만 취소했을 때
+        // 적립금이 전부 돌아오고 나머지는 카드 환불이 된다. 비율대로 나눠야
+        // 어느 항목을 취소하든 낸 만큼 돌아간다.
+        OrderListResponse orders = null;
+        Money remaining = usePoint;
+        int index = 0;
+
+        for (CheckoutRequest.Item item : request.items()) {
+            boolean last = (++index == request.items().size());
+            Product product = productRepository.findById(item.productId()).orElseThrow();
+            Money itemTotal = product.totalPriceOf(item.quantity());
+
+            // 마지막 항목이 나머지를 모두 가져간다. 비례 배분에서 내림으로 생긴
+            // 잔돈이 여기서 정산되어 합계가 정확히 맞는다. (D1의 방식과 같다)
+            Money portion = last ? remaining : usePoint.proportion(1, request.items().size());
+            if (portion.isLessThan(itemTotal) || portion.equals(itemTotal)) {
+                remaining = remaining.minus(portion);
+            } else {
+                portion = itemTotal;
+                remaining = remaining.minus(portion);
+            }
+
+            orders = orderService.placeOrderWithPayment(customerId, item.toOrderRequest(), portion);
+        }
 
         // 적립은 실제로 낸 금액(카드분) 기준이다. 포인트로 낸 부분에는 적립하지 않는다.
         Money earned = rewardPolicy.rewardFor(cardAmount);

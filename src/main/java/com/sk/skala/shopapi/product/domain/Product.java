@@ -76,6 +76,20 @@ public class Product {
     private int stock;
 
     /**
+     * 대분류. 화면 상단 탭에 해당한다. (D35)
+     *
+     * <p>이름으로 추정하지 않고 컬럼으로 둔 이유는 <b>서버에서 걸러야 페이지 처리와
+     * 맞기 때문이다.</b> 화면에서 거르면 서버가 10개를 잘라 보낸 뒤 그중 3개만 남아
+     * "10개 보기"인데 3개만 있는 페이지가 나온다.
+     */
+    @Column(nullable = false, length = 30)
+    private String category;
+
+    /** 소분류. 대분류만 두면 스킨케어에 절반이 몰려 실제로 좁혀지지 않는다. */
+    @Column(nullable = false, length = 30)
+    private String subcategory;
+
+    /**
      * 새 상품을 만든다.
      *
      * <p>필수값 검사를 생성자에서 하는 이유는, 이 검사를 통과하지 못한 {@code Product}가
@@ -94,11 +108,19 @@ public class Product {
      * 호출부를 조금 번거롭게 하더라도 안전하다.
      */
     public Product(String name, Money price, int stock) {
+        // 분류를 지정하지 않으면 기타로 둔다. 테스트가 만드는 상품처럼
+        // 분류가 의미 없는 경우에 매번 값을 정하게 하지 않는다.
+        this(name, price, stock, "기타", "기타");
+    }
+
+    public Product(String name, Money price, int stock, String category, String subcategory) {
         validatePrice(price);
         validateStock(stock);
         this.name = normalizeName(name);
         this.price = price;
         this.stock = stock;
+        this.category = (category == null || category.isBlank()) ? "기타" : category;
+        this.subcategory = (subcategory == null || subcategory.isBlank()) ? "기타" : subcategory;
     }
 
     /**

@@ -1,108 +1,145 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, refresh, subscribeToken, getAccessToken } from './api/client.js'
-import Brand from './components/Brand.jsx'
+import { api, getAccessToken, refresh, subscribeToken } from './api/client.js'
+import CartSheet from './components/CartSheet.jsx'
 import ConfirmDialog from './components/ConfirmDialog.jsx'
+import CheckoutSheet from './components/CheckoutSheet.jsx'
 import FlashSales from './components/FlashSales.jsx'
+import Header from './components/Header.jsx'
 import Login from './components/Login.jsx'
-import Orders from './components/Orders.jsx'
+import MyPage from './components/MyPage.jsx'
 import ProductGrid from './components/ProductGrid.jsx'
+import SideMenu from './components/SideMenu.jsx'
 import Toast from './components/Toast.jsx'
 import WaitingRoomModal from './components/WaitingRoomModal.jsx'
+import useCart from './hooks/useCart.js'
+import useScrollDirection from './hooks/useScrollDirection.js'
+import { preferences } from './auth/preferences.js'
 
-const won = (n) => n.toLocaleString('ko-KR')
+const PAGE_SIZE = 10
+
+const SORTS = [
+  { key: 'BEST', label: '판매순' },
+  { key: 'LATEST', label: '신상품' },
+  { key: 'PRICE_ASC', label: '낮은 가격순' },
+  { key: 'PRICE_DESC', label: '높은 가격순' },
+]
 
 export default function App() {
   const [me, setMe] = useState(null)
-  const [tab, setTab] = useState('event')   // 특가를 첫 화면으로. 이 프로젝트의 얼굴이다.
-  const [products, setProducts] = useState([])
+  const [booting, setBooting] = useState(true)
+  const [view, setView] = useState('shop')          // shop | event | mypage
+  const [filter, setFilter] = useState({})          // { category, subcategory }
+  const [sort, setSort] = useState('BEST')
+  const [page, setPage] = useState(0)
+
+  const [categories, setCategories] = useState([])
+  const [products, setProducts] = useState(null)
   const [orders, setOrders] = useState(null)
   const [sales, setSales] = useState([])
+  const [address, setAddress] = useState(null)
+
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [cartOpen, setCartOpen] = useState(false)
+  const [checkout, setCheckout] = useState(null)
+  const [addConfirm, setAddConfirm] = useState(null)   // 장바구니 담기 확인
+  const [queue, setQueue] = useState(null)
   const [toast, setToast] = useState(null)
   const [busy, setBusy] = useState(false)
-  const [booting, setBooting] = useState(true)
 
-  /** 결제 직전 확인 창. 무엇을 얼마에 사는지 보여주고 한 번 더 묻는다. */
-  const [confirm, setConfirm] = useState(null)
-
-  /** 대기열 상태. 순번을 받으면 화면을 덮는다. */
-  const [queue, setQueue] = useState(null)
+  const headerHidden = useScrollDirection()
+  const cart = useCart(me?.customerId)
   const pollTimer = useRef(null)
 
   const point = orders?.point ?? 0
 
   /**
-   * 새로고침해도 로그인이 유지되게 한다.
+   * 새로고침해도 로그인이 유지된다.
    *
-   * 액세스 토큰은 메모리에만 있어 새로고침하면 사라진다(D18).
-   * HttpOnly 쿠키의 리프레시 토큰으로 다시 받아온다. 저장하지 않고 다시 받는 방식이다.
+   * 액세스 토큰은 메모리에만 있어 사라지지만, HttpOnly 쿠키의 리프레시 토큰으로
+   * 다시 받아온다. 저장하지 않고 갱신으로 푸는 방식이다. (D18)
    */
   useEffect(() => {
     subscribeToken((token) => { if (!token) setMe(null) })
     ;(async () => {
+      // 자동 로그인을 꺼뒀으면 쿠키가 있어도 쓰지 않는다.
+      // 남아 있는 쿠키는 지운다. 안 쓸 토큰을 14일 동안 들고 있을 이유가 없고,
+      // 공용 기기에서 그 쿠키가 그대로 남으면 자동 로그인을 끈 의미가 사라진다. (D39)
+      if (!preferences.autoLogin()) {
+        await api.logout().catch(() => {})
+        setBooting(false)
+        return
+      }
+
       if (await refresh()) {
-        try { setMe(await api.me()) } catch { /* 갱신은 됐는데 조회 실패면 비로그인으로 둔다 */ }
+        try { setMe(await api.me()) } catch { /* 갱신됐는데 조회 실패면 비로그인으로 둔다 */ }
       }
       setBooting(false)
     })()
   }, [])
 
-  /** 대기 중에 화면을 떠나면 타이머가 남는다. 반드시 정리한다. */
   useEffect(() => () => clearTimeout(pollTimer.current), [])
 
-  const reload = useCallback(async () => {
-    const [productPage, saleList] = await Promise.all([api.products(0, 40), api.flashSales()])
-    setProducts(productPage.content)
-    setSales(saleList)
-    if (getAccessToken()) setOrders(await api.orders())
-  }, [])
-
-  useEffect(() => { if (!booting) reload().catch(showError) }, [booting, me, reload])
-
   function showError(e) {
-    // 검증 실패는 필드별로 이유가 다르다. 뭉뚱그리면 무엇을 고칠지 모른다.
     const detail = e?.errors ? Object.values(e.errors).join(' · ') : null
     setToast({ type: 'error', message: e?.message ?? '요청에 실패했습니다', detail })
   }
 
-  /**
-   * 모든 동작의 공통 실행기.
-   *
-   * 성공하든 실패하든 전체를 다시 읽는다. 주문 하나가 재고·적립금·주문내역·특가 수량을
-   * 동시에 바꾸기 때문이다. 실패했을 때도 읽는 이유는, 품절이라 실패했다면
-   * 화면의 재고도 이미 0일 것이기 때문이다.
-   */
+  /** 목록을 다시 읽는다. 필터·정렬·페이지가 바뀔 때마다 서버에 다시 묻는다. */
+  const loadProducts = useCallback(async () => {
+    const data = await api.products({ page, size: PAGE_SIZE, sort, ...filter })
+    setProducts(data)
+  }, [page, sort, filter])
+
+  /** 로그인 상태에 딸린 것들. 주문·배송지·특가. */
+  const loadMine = useCallback(async () => {
+    const [saleList, orderList] = await Promise.all([api.flashSales(), api.orders()])
+    setSales(saleList)
+    setOrders(orderList)
+    try { setAddress(await api.address()) } catch { setAddress(null) }
+  }, [])
+
+  useEffect(() => {
+    if (booting || !me) return
+    api.categories().then(setCategories).catch(showError)
+    loadMine().catch(showError)
+  }, [booting, me, loadMine])
+
+  useEffect(() => {
+    if (booting || !me) return
+    loadProducts().catch(showError)
+  }, [booting, me, loadProducts])
+
+  /** 필터가 바뀌면 첫 페이지로 돌아간다. 3페이지를 보다 분류를 바꾸면 빈 화면이 뜬다. */
+  function selectCategory(next) {
+    setFilter(next)
+    setPage(0)
+    setView('shop')
+    // 분류를 바꾸면 목록 맨 위부터 보는 것이 자연스럽다.
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
   async function run(action, successMessage) {
     setBusy(true)
     try {
       await action()
-      await reload()
+      await Promise.all([loadProducts(), loadMine()])
       if (successMessage) setToast({ type: 'ok', message: successMessage })
     } catch (e) {
       showError(e)
-      reload().catch(() => {})
+      Promise.all([loadProducts(), loadMine()]).catch(() => {})
     } finally {
       setBusy(false)
     }
   }
 
-  // ─────────────────── 특가: 대기열 → 확인 → 결제 ───────────────────
+  // ── 특가: 대기열 → 주문서 ──
 
-  /**
-   * 특가 참여를 시작한다.
-   *
-   * 곧바로 결제하지 않는다. 먼저 줄을 서고, 순서가 되면 확인 창을 띄운다.
-   * 선착순은 급하게 누르는 화면이라 오히려 확인 절차가 더 필요하다.
-   */
   async function joinFlashSale(sale) {
     setBusy(true)
     try {
       const ticket = await api.enterQueue(sale.id)
-      if (ticket.admitted) {
-        openConfirm(sale)
-      } else {
-        setQueue({ sale, ticket })
-        pollQueue(sale)
-      }
+      if (ticket.admitted) openFlashCheckout(sale)
+      else { setQueue({ sale, ticket }); pollQueue(sale) }
     } catch (e) {
       showError(e)
     } finally {
@@ -110,24 +147,13 @@ export default function App() {
     }
   }
 
-  /**
-   * 순번을 주기적으로 확인한다.
-   *
-   * 1.2초 간격으로 둔 이유: 더 짧으면 대기 인원이 많을 때 조회 요청이 서버를 때린다.
-   * 대기열은 서버를 지키려고 만든 것인데 그 조회가 서버를 괴롭히면 앞뒤가 안 맞는다.
-   */
   function pollQueue(sale) {
     clearTimeout(pollTimer.current)
     pollTimer.current = setTimeout(async () => {
       try {
         const ticket = await api.queuePosition(sale.id)
-        if (ticket.admitted) {
-          setQueue(null)
-          openConfirm(sale)
-        } else {
-          setQueue({ sale, ticket })
-          pollQueue(sale)
-        }
+        if (ticket.admitted) { setQueue(null); openFlashCheckout(sale) }
+        else { setQueue({ sale, ticket }); pollQueue(sale) }
       } catch (e) {
         setQueue(null)
         showError(e)
@@ -135,14 +161,11 @@ export default function App() {
     }, 1200)
   }
 
-  function openConfirm(sale) {
-    setConfirm({
+  function openFlashCheckout(sale) {
+    setCheckout({
       kind: 'flash',
       sale,
-      title: '특가 상품 결제',
-      productName: sale.productName,
-      price: sale.price,
-      quantity: 1,
+      items: [{ productId: sale.productId, name: sale.productName, price: sale.price, quantity: 1 }],
     })
   }
 
@@ -153,117 +176,176 @@ export default function App() {
     if (sale) await api.leaveQueue(sale.id).catch(() => {})
   }
 
-  /** 확인 창에서 결제를 누른 순간. */
-  async function submitConfirm() {
-    const c = confirm
-    setConfirm(null)
+  // ── 결제 ──
+
+  async function submitCheckout(payload) {
+    const c = checkout
+    setCheckout(null)
+
     if (c.kind === 'flash') {
-      await run(
-        async () => {
-          try {
-            await api.joinFlashSale(c.sale.id, c.quantity)
-          } finally {
-            // 성공이든 실패든 줄에서 빠진다. 빠지지 않으면 뒷사람이 영원히 기다린다.
-            await api.leaveQueue(c.sale.id).catch(() => {})
-          }
-        },
-        `${c.productName} 구매가 완료되었습니다`)
-    } else {
-      await run(
-        () => api.order(c.product.id, c.quantity),
-        `${c.productName} ${c.quantity}개를 구매했습니다`)
+      await run(async () => {
+        try {
+          // 특가는 수량 보호가 먼저다. 참여에 성공해야 결제로 넘어간다.
+          await api.joinFlashSale(c.sale.id, 1)
+          if (payload.delivery) await api.saveAddress(payload.delivery)
+        } finally {
+          await api.leaveQueue(c.sale.id).catch(() => {})
+        }
+      }, `${c.sale.name} 구매가 완료되었습니다`)
+      return
     }
+
+    await run(async () => {
+      const result = await api.checkout({
+        items: c.items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
+        paymentMethod: payload.paymentMethod,
+        usePoint: payload.usePoint,
+        card: payload.card,
+        delivery: payload.delivery,
+      })
+      cart.clear()
+      const earned = result.earnedPoint
+      setToast({
+        type: 'ok',
+        message: '결제가 완료되었습니다',
+        detail: earned > 0
+          ? `${earned.toLocaleString('ko-KR')}P가 적립되었습니다`
+          : null,
+      })
+    })
   }
 
-  function closeConfirm() {
-    // 특가는 확인 창을 닫을 때도 줄에서 빠져야 한다.
-    if (confirm?.kind === 'flash') api.leaveQueue(confirm.sale.id).catch(() => {})
-    setConfirm(null)
+  function closeCheckout() {
+    if (checkout?.kind === 'flash') api.leaveQueue(checkout.sale.id).catch(() => {})
+    setCheckout(null)
   }
 
   if (booting) return <div className="empty">불러오는 중…</div>
-  if (!me) return <Login onLoggedIn={setMe} />
+  if (!me) return <Login onLoggedIn={setMe} onError={showError} />
+
+  const totalPages = products?.totalPages ?? 0
 
   return (
     <>
-      <div className="topbar">
-        <div className="topbar-inner">
-          <Brand />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div className="wallet">
-              <span className="who">{me.customerId}</span>
-              <span className="amount">{won(point)}P</span>
+      <Header
+        hidden={headerHidden}
+        view={view}
+        current={filter}
+        categories={categories}
+        cartCount={cart.count}
+        me={me}
+        point={point}
+        onHome={() => { setView('shop'); setFilter({}); setPage(0); window.scrollTo({ top: 0 }) }}
+        onNavigate={(v) => { setView(v); window.scrollTo({ top: 0 }) }}
+        onSelectCategory={selectCategory}
+        onOpenMenu={() => setMenuOpen(true)}
+        onOpenCart={() => setCartOpen(true)}
+      />
+
+      <main className="wrap">
+        {view === 'shop' && (
+          <>
+            <div className="list-head">
+              <span className="muted small">
+                총 {products?.totalElements ?? 0}개
+              </span>
+              <div className="sorts">
+                {SORTS.map((s) => (
+                  <button
+                    key={s.key}
+                    className={sort === s.key ? 'on' : ''}
+                    onClick={() => { setSort(s.key); setPage(0) }}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
             </div>
-            <button className="line tiny" disabled={busy}
-                    onClick={() => run(() => api.charge(me.customerId, 100000), '100,000P가 충전되었습니다')}>
-              충전
-            </button>
-            <button className="line tiny" onClick={() => run(() => api.logout(), null)}>
-              로그아웃
-            </button>
-          </div>
-        </div>
-      </div>
 
-      <div className="wrap">
-        <div className="tabs">
-          <button className={tab === 'event' ? 'on' : ''} onClick={() => setTab('event')}>
-            오늘의 특가
-          </button>
-          <button className={tab === 'shop' ? 'on' : ''} onClick={() => setTab('shop')}>
-            전체 상품
-          </button>
-          <button className={tab === 'orders' ? 'on' : ''} onClick={() => setTab('orders')}>
-            주문 내역
-          </button>
-        </div>
-
-        {tab === 'event' && (
-          <div className="section">
-            <h2>오늘의 특가</h2>
-            <p className="sub">준비된 수량이 소진되면 자동으로 마감됩니다</p>
-            <FlashSales
-              sales={sales}
-              busy={busy}
-              onRefresh={() => reload().catch(showError)}
-              onJoin={joinFlashSale}
-            />
-          </div>
-        )}
-
-        {tab === 'shop' && (
-          <div className="section">
-            <h2>전체 상품</h2>
-            <p className="sub">지금 인기 있는 뷰티 아이템</p>
             <ProductGrid
-              products={products}
+              products={products?.content ?? []}
               busy={busy}
-              onOrder={(product, quantity) => setConfirm({
-                kind: 'product',
-                product,
-                title: '구매 확인',
-                productName: product.name,
-                price: product.price,
-                quantity,
+              onAdd={(product, quantity) => setAddConfirm({ product, quantity })}
+              onBuyNow={(product, quantity) => setCheckout({
+                kind: 'cart',
+                items: [{
+                  productId: product.id, name: product.name,
+                  price: product.price, quantity,
+                }],
               })}
             />
-          </div>
+
+            {totalPages > 1 && (
+              <nav className="pager">
+                <button disabled={page === 0} onClick={() => setPage(page - 1)}>이전</button>
+                {Array.from({ length: totalPages }, (_, i) => (
+                  <button key={i} className={i === page ? 'on' : ''} onClick={() => setPage(i)}>
+                    {i + 1}
+                  </button>
+                ))}
+                <button disabled={page >= totalPages - 1} onClick={() => setPage(page + 1)}>
+                  다음
+                </button>
+              </nav>
+            )}
+          </>
         )}
 
-        {tab === 'orders' && (
-          <div className="section">
-            <h2>주문 내역</h2>
-            <p className="sub">수량을 지정해 부분 취소할 수 있습니다</p>
-            <Orders
-              orders={orders}
-              busy={busy}
-              onCancel={(productId, quantity) => run(
-                () => api.cancel(productId, quantity),
-                '주문이 취소되었습니다')}
-            />
-          </div>
+        {view === 'event' && (
+          <FlashSales
+            sales={sales}
+            busy={busy}
+            onRefresh={() => loadMine().catch(showError)}
+            onJoin={joinFlashSale}
+          />
         )}
-      </div>
+
+        {view === 'mypage' && (
+          <MyPage
+            me={me}
+            orders={orders}
+            address={address}
+            busy={busy}
+            onCancel={(productId, quantity) => run(
+              () => api.cancel(productId, quantity), '주문이 취소되었습니다')}
+          />
+        )}
+      </main>
+
+      <footer className="site-foot">
+        <div className="foot-brand">SKALA BEAUTY</div>
+        <p className="muted small">SKALA SHOP API · 최종 실습 과제</p>
+        <button className="text-link" onClick={() => run(() => api.logout(), null)}>
+          로그아웃
+        </button>
+      </footer>
+
+      <SideMenu
+        open={menuOpen}
+        me={me}
+        point={point}
+        cartCount={cart.count}
+        categories={categories}
+        current={filter}
+        onSelect={selectCategory}
+        onClose={() => setMenuOpen(false)}
+        onNavigate={setView}
+        onOpenCart={() => setCartOpen(true)}
+        onLogout={() => run(() => api.logout(), null)}
+      />
+
+      <CartSheet
+        open={cartOpen}
+        items={cart.items}
+        total={cart.total}
+        onClose={() => setCartOpen(false)}
+        onQuantity={cart.setQuantity}
+        onRemove={cart.remove}
+        onCheckout={() => {
+          setCartOpen(false)
+          setCheckout({ kind: 'cart', items: cart.items })
+        }}
+      />
 
       <WaitingRoomModal
         ticket={queue?.ticket}
@@ -271,16 +353,29 @@ export default function App() {
         onCancel={cancelQueue}
       />
 
-      <ConfirmDialog
-        open={!!confirm}
-        title={confirm?.title}
-        productName={confirm?.productName}
-        price={confirm?.price ?? 0}
-        quantity={confirm?.quantity ?? 1}
+      <CheckoutSheet
+        open={!!checkout}
+        items={checkout?.items ?? []}
         point={point}
+        address={address}
         busy={busy}
-        onConfirm={submitConfirm}
-        onCancel={closeConfirm}
+        onClose={closeCheckout}
+        onSubmit={submitCheckout}
+      />
+
+      <ConfirmDialog
+        open={!!addConfirm}
+        title="장바구니에 담을까요?"
+        message={addConfirm
+          ? `${addConfirm.product.name} · ${addConfirm.quantity}개`
+          : null}
+        confirmLabel="담기"
+        onCancel={() => setAddConfirm(null)}
+        onConfirm={() => {
+          cart.add(addConfirm.product, addConfirm.quantity)
+          setToast({ type: 'ok', message: '장바구니에 담았습니다' })
+          setAddConfirm(null)
+        }}
       />
 
       <Toast toast={toast} onClose={() => setToast(null)} />
