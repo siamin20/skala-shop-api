@@ -13,11 +13,10 @@ out/
 # 설계 문서. 교재 인용을 포함하고 있어 저장소에도 커밋하지 않는다.
 docs/
 
-# AI 작업 규칙. 제출물과 이미지 어디에도 들어가지 않는다.
-AGENTS.md
-CLAUDE.md
-CONTRIBUTING.md
-.claude/
+# 이미지에 들어갈 이유가 없는 문서와 개인 설정.
+*.md
+!README.md
+tools/
 
 # 버전 관리 메타데이터. 수십 MB가 되기도 하고 이미지에서 쓸 일이 없다.
 .git/
