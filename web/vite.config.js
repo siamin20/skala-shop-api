@@ -17,6 +17,18 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
+
+    /*
+     * 모든 주소에서 듣는다.
+     *
+     * 기본값을 그대로 두면 Node가 localhost를 DNS 순서대로 풀어 <b>한쪽에만</b> 바인딩한다.
+     * 이 환경에서는 IPv6([::1])만 잡혀서, 브라우저가 localhost를 127.0.0.1로 푸는 순간
+     * "연결할 수 없음"이 뜬다. 서버는 멀쩡히 떠 있는데 화면이 안 열리니 원인을 찾기 어렵다.
+     *
+     * true로 두면 IPv4와 IPv6 양쪽에서 듣는다. 같은 네트워크의 휴대폰으로
+     * 화면을 확인할 때도 이 설정이 필요하다.
+     */
+    host: true,
     proxy: {
       '/api': {
         target: 'http://localhost:8080',
