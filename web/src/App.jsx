@@ -81,6 +81,47 @@ export default function App() {
 
   useEffect(() => () => clearTimeout(pollTimer.current), [])
 
+  /*
+   * 브라우저 뒤로 가기를 화면 전환에 연결한다. (D50)
+   *
+   * 화면 전환을 React 상태로만 하고 히스토리를 쌓지 않으면, 사용자가 뒤로 가기를 눌렀을 때
+   * <b>앱 밖으로 나가 창이 닫힌다.</b> 쇼핑 중에 한 단계 되돌아가려던 사람이 처음부터 다시 해야 한다.
+   *
+   * view가 바뀌면 히스토리를 하나 쌓고, 뒤로 가기가 오면 그 값으로 되돌린다.
+   * 되돌릴 때는 다시 쌓지 않는다. 그러면 뒤로 가기를 눌러도 제자리에 머문다.
+   */
+  const skipPush = useRef(false)
+  const checkoutRef = useRef(null)
+  checkoutRef.current = checkout
+
+  useEffect(() => {
+    window.history.replaceState({ view: 'home' }, '')
+
+    const onPop = (event) => {
+      const next = event.state?.view ?? 'home'
+      skipPush.current = true
+
+      // 특가 주문서에서 뒤로 나가면 잡아둔 자리를 내놓는다.
+      // 이걸 빠뜨리면 앞자리가 비지 않아 뒤에 선 사람이 계속 기다린다.
+      const current = checkoutRef.current
+      if (next !== 'checkout' && current) {
+        if (current.kind === 'flash') api.leaveQueue(current.sale.id).catch(() => {})
+        setCheckout(null)
+      }
+      setView(next)
+    }
+
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [])
+
+  useEffect(() => {
+    if (skipPush.current) { skipPush.current = false; return }
+    // 같은 화면을 다시 쌓지 않는다. 카테고리를 여러 번 고르면 뒤로 가기가 그만큼 필요해진다.
+    if (window.history.state?.view === view) return
+    window.history.pushState({ view }, '')
+  }, [view])
+
   function showError(e) {
     const detail = e?.errors ? Object.values(e.errors).join(' · ') : null
     setToast({ type: 'error', message: e?.message ?? '요청에 실패했습니다', detail })
