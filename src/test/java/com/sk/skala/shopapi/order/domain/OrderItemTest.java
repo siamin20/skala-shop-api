@@ -30,7 +30,7 @@ class OrderItemTest {
         OrderItem item = new OrderItem(고객, 무선마우스, 2);
 
         assertThat(item.getQuantity()).isEqualTo(2);
-        assertThat(item.getUnitPrice()).isEqualTo(Money.of(15_000));
+        assertThat(item.unitPrice()).isEqualTo(Money.of(15_000));
         assertThat(item.totalPrice()).isEqualTo(Money.of(30_000));
     }
 
@@ -46,7 +46,7 @@ class OrderItemTest {
     void increaseAccumulatesQuantity() {
         OrderItem item = new OrderItem(고객, 무선마우스, 2);
 
-        item.increase(3);
+        item.increase(3, Money.of(45_000));
 
         assertThat(item.getQuantity()).isEqualTo(5);
         assertThat(item.totalPrice()).isEqualTo(Money.of(75_000));
@@ -94,7 +94,7 @@ class OrderItemTest {
     void rejectQuantityOverflow() {
         OrderItem item = new OrderItem(고객, 무선마우스, Integer.MAX_VALUE);
 
-        assertThatThrownBy(() -> item.increase(1))
+        assertThatThrownBy(() -> item.increase(1, Money.of(15_000)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("너무 큽니다");
 
@@ -103,28 +103,49 @@ class OrderItemTest {
     }
 
     @Test
-    @DisplayName("주문 후 상품 가격이 올라도 환급액은 주문 시점 단가를 따른다")
-    void refundUsesSnapshotNotCurrentPrice() {
+    @DisplayName("주문 후 상품 가격이 올라도 환급액은 실제 결제액을 따른다")
+    void refundUsesPaidAmountNotCurrentPrice() {
         OrderItem item = new OrderItem(고객, 무선마우스, 2);
 
         // 주문 뒤 상품 가격이 두 배로 오른 상황
         무선마우스.changePrice(Money.of(30_000));
 
-        assertThat(item.getUnitPrice()).isEqualTo(Money.of(15_000));
         assertThat(item.totalPrice()).isEqualTo(Money.of(30_000));
-        // 환급도 인상된 30,000원이 아니라 주문 당시 단가 15,000원을 따른다
+        // 환급도 인상된 30,000원이 아니라 결제한 15,000원을 따른다
         assertThat(item.cancel(1)).isEqualTo(Money.of(15_000));
     }
 
     @Test
-    @DisplayName("재주문해도 단가 스냅샷은 처음 값을 유지한다")
-    void increaseKeepsOriginalUnitPrice() {
-        OrderItem item = new OrderItem(고객, 무선마우스, 1);
+    @DisplayName("가격이 오른 뒤 재주문해도 결제액과 환급액이 일치한다")
+    void refundMatchesPaidAmountAfterPriceChange() {
+        // 15,000원 2개 = 30,000원 결제
+        OrderItem item = new OrderItem(고객, 무선마우스, 2);
 
+        // 가격 인상 후 30,000원짜리 1개를 추가 결제 → 누적 60,000원
         무선마우스.changePrice(Money.of(30_000));
-        item.increase(1);
+        item.increase(1, Money.of(30_000));
 
-        assertThat(item.getUnitPrice()).isEqualTo(Money.of(15_000));
-        assertThat(item.totalPrice()).isEqualTo(Money.of(30_000));
+        assertThat(item.getQuantity()).isEqualTo(3);
+        assertThat(item.totalPrice()).isEqualTo(Money.of(60_000));
+
+        // 단가 스냅샷 방식이었다면 15,000 × 3 = 45,000만 돌아가 고객이 15,000원을 잃는다.
+        assertThat(item.cancel(3)).isEqualTo(Money.of(60_000));
+    }
+
+    @Test
+    @DisplayName("나눠서 취소해도 환급 합계가 결제액과 정확히 일치한다")
+    void partialCancellationsSumToPaidAmount() {
+        // 나누어떨어지지 않는 금액으로 잔돈 처리를 확인한다.
+        // 10,000원 3개 = 30,000원. 1개씩 세 번 취소.
+        Product 상품 = new Product("잔돈확인용", Money.of(10_000));
+        OrderItem item = new OrderItem(고객, 상품, 3);
+        상품.changePrice(Money.of(1L));
+        item.increase(1, Money.of(1L));   // 누적 30,001원 / 4개
+
+        Money 합계 = item.cancel(1).plus(item.cancel(1)).plus(item.cancel(1)).plus(item.cancel(1));
+
+        // 비례 계산에서 내림된 잔돈이 마지막 전량 취소에서 정산된다
+        assertThat(합계).isEqualTo(Money.of(30_001));
+        assertThat(item.isEmpty()).isTrue();
     }
 }

@@ -98,7 +98,9 @@ class OrderServiceTest {
             // 항목은 하나여야 한다. 둘이면 (고객, 상품) 유니크 제약도 깨진 것이다.
             assertThat(response.products()).hasSize(1);
             assertThat(response.products().get(0).quantity()).isEqualTo(5);
-            assertThat(response.point()).isEqualTo(1_000_000 - 15_000 * 5);
+            // 기대값도 Money로 계산한다. 원시 타입 산술을 쓰면 운영 코드와 다른 계산 경로가 생긴다.
+            Money 예상잔액 = Money.of(1_000_000).minus(Money.of(15_000).times(5));
+            assertThat(response.point()).isEqualTo(예상잔액.getAmount());
         }
 
         @Test
@@ -252,6 +254,71 @@ class OrderServiceTest {
     }
 
     /**
+     * 가격 변동과 환급 정합성.
+     *
+     * <p>차감은 현재 가격으로, 환급은 저장된 값으로 이뤄지므로 둘이 어긋나면 돈이 새거나 남는다.
+     * 어느 방향이든 실제 금전 손실이라 가장 중요한 검증이다.
+     */
+    @Nested
+    @DisplayName("가격 변동과 환급")
+    class PriceChange {
+
+        @Test
+        @DisplayName("가격이 오른 뒤 재주문해도 전량 취소하면 결제액이 전부 돌아온다")
+        void refundMatchesPaidAmountAfterPriceIncrease() {
+            orderService.placeOrder("skala01", new OrderRequest(무선마우스.getId(), 2));   // -30,000
+
+            무선마우스.changePrice(Money.of(30_000));
+            productRepository.saveAndFlush(무선마우스);
+
+            orderService.placeOrder("skala01", new OrderRequest(무선마우스.getId(), 1));   // -30,000
+            assertThat(잔액()).isEqualTo(Money.of(940_000));
+
+            OrderListResponse response = orderService.cancelOrder(
+                    "skala01", new OrderRequest(무선마우스.getId(), 3));
+
+            // 단가 스냅샷 방식이었다면 45,000원만 돌아와 985,000원이 되고, 고객이 15,000원을 잃는다.
+            assertThat(response.point()).isEqualTo(1_000_000);
+        }
+
+        @Test
+        @DisplayName("가격이 내린 뒤 재주문해도 결제한 만큼만 돌아온다")
+        void refundMatchesPaidAmountAfterPriceDecrease() {
+            orderService.placeOrder("skala01", new OrderRequest(무선마우스.getId(), 2));   // -30,000
+
+            무선마우스.changePrice(Money.of(5_000));
+            productRepository.saveAndFlush(무선마우스);
+
+            orderService.placeOrder("skala01", new OrderRequest(무선마우스.getId(), 2));   // -10,000
+
+            OrderListResponse response = orderService.cancelOrder(
+                    "skala01", new OrderRequest(무선마우스.getId(), 4));
+
+            // 반대 방향도 확인한다. 어긋나면 이번엔 고객이 이득을 보고 서비스가 손실을 본다.
+            assertThat(response.point()).isEqualTo(1_000_000);
+        }
+
+        @Test
+        @DisplayName("가격 변동 후 나눠 취소해도 잔액이 정확히 복구된다")
+        void partialCancellationsRestoreExactBalance() {
+            orderService.placeOrder("skala01", new OrderRequest(무선마우스.getId(), 2));
+
+            무선마우스.changePrice(Money.of(30_000));
+            productRepository.saveAndFlush(무선마우스);
+            orderService.placeOrder("skala01", new OrderRequest(무선마우스.getId(), 1));
+
+            orderService.cancelOrder("skala01", new OrderRequest(무선마우스.getId(), 1));
+            orderService.cancelOrder("skala01", new OrderRequest(무선마우스.getId(), 1));
+            OrderListResponse response = orderService.cancelOrder(
+                    "skala01", new OrderRequest(무선마우스.getId(), 1));
+
+            // 비례 계산에서 내림된 잔돈이 마지막 취소에서 정산된다
+            assertThat(response.point()).isEqualTo(1_000_000);
+            assertThat(response.products()).isEmpty();
+        }
+    }
+
+    /**
      * 주문이 상품 삭제에 미치는 영향.
      *
      * <p>주문이 존재하면서 비로소 드러나는 경로다. 상품만 있을 때는 발생하지 않아
@@ -303,11 +370,16 @@ class OrderServiceTest {
             OrderListResponse response = orderService.placeOrder(
                     "skala01", new OrderRequest(키보드.getId(), 1));                          // -29,000
 
-            long expected = 1_000_000 - 30_000 - 29_000 + 15_000 - 45_000 - 29_000;
-            assertThat(response.point()).isEqualTo(expected);
+            Money 예상잔액 = Money.of(1_000_000)
+                    .minus(Money.of(30_000)).minus(Money.of(29_000))
+                    .plus(Money.of(15_000))
+                    .minus(Money.of(45_000)).minus(Money.of(29_000));
+
+            assertThat(response.point()).isEqualTo(예상잔액.getAmount());
 
             // 주문 목록의 합계와 차감된 포인트가 일치해야 한다
-            assertThat(response.totalSpent()).isEqualTo(1_000_000 - expected);
+            assertThat(response.totalSpent())
+                    .isEqualTo(Money.of(1_000_000).minus(예상잔액).getAmount());
         }
     }
 }

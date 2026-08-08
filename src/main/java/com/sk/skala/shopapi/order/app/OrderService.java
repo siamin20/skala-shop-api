@@ -73,13 +73,15 @@ public class OrderService {
         Customer customer = findCustomerOrThrow(customerId);
         Product product = findProductOrThrow(request.productId());
 
-        // 총액은 상품의 현재 가격으로 계산한다. 이 값이 곧 주문 항목의 단가 스냅샷이 된다.
+        // 총액은 상품의 현재 가격으로 계산한다.
         Money totalPrice = product.totalPriceOf(request.quantity());
         customer.deductPoint(totalPrice);
 
+        // 차감한 금액을 그대로 항목에 넘긴다. 항목이 상품 가격을 다시 읽으면
+        // 그 사이 가격이 바뀌었을 때 차감액과 환급 재원이 어긋난다.
         orderItemRepository.findByCustomerAndProduct(customer, product)
                 .ifPresentOrElse(
-                        existing -> existing.increase(request.quantity()),
+                        existing -> existing.increase(request.quantity(), totalPrice),
                         () -> orderItemRepository.save(
                                 new OrderItem(customer, product, request.quantity())));
 
@@ -89,7 +91,7 @@ public class OrderService {
     /**
      * 주문을 취소한다.
      *
-     * <p>환급액은 현재 상품 가격이 아니라 <b>주문 시점 단가</b>로 계산한다.
+     * <p>환급 재원은 현재 상품 가격이 아니라 <b>실제로 결제한 누적 총액</b>이다.
      * {@link OrderItem#cancel(int)}이 검증·차감·환급액 계산을 한 번에 처리하므로,
      * 이 메서드에서 순서를 잘못 잡아 금액이 어긋날 여지가 없다.
      *

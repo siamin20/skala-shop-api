@@ -10,12 +10,13 @@ import com.sk.skala.shopapi.order.domain.OrderItem;
  * 응답 DTO는 만들어진 뒤 값이 바뀔 일이 없고, {@code record}의 정적 팩터리
  * {@link #from(OrderItem)} 하나면 Builder가 하던 역할을 대신하기 때문이다.
  *
- * <p>{@code price}는 <b>주문 시점 단가</b>다. 현재 상품 가격이 아니다.
- * 목록에 지금 가격을 보여주면, 취소했을 때 돌려받는 금액과 화면의 숫자가 어긋난다.
+ * <p>{@code price}는 현재 상품 가격이 아니라 <b>실제로 결제한 금액에서 나온 평균 단가</b>다.
+ * 지금 가격을 보여주면 취소 시 돌려받는 금액과 화면의 숫자가 어긋난다.
+ * 가격이 다른 시점에 나눠 주문했으면 어느 한 시점의 가격도 아닌 평균이 된다.
  *
  * @param productId   상품 ID
  * @param productName 상품명
- * @param price       주문 시점 단가. 원 단위 정수 (D1)
+ * @param price       결제 총액에서 파생한 평균 단가. 원 단위 정수 (D1)
  * @param quantity    주문 수량
  * @param totalPrice  단가 × 수량
  */
@@ -29,7 +30,7 @@ public record OrderItemDto(
     /**
      * 주문 항목을 응답으로 옮긴다.
      *
-     * <p>단가를 상품의 현재 가격이 아니라 주문 항목의 스냅샷에서 가져온다.
+     * <p>단가를 상품의 현재 가격이 아니라 주문 항목의 결제 총액에서 파생한다.
      * 화면에 지금 가격을 보여주면, 취소했을 때 실제로 돌려받는 금액과 숫자가 어긋나
      * 사용자가 환불 오류로 오해한다.
      *
@@ -40,7 +41,7 @@ public record OrderItemDto(
         return new OrderItemDto(
                 orderItem.getProduct().getId(),
                 orderItem.getProduct().getName(),
-                orderItem.getUnitPrice().getAmount(),
+                orderItem.unitPrice().getAmount(),
                 orderItem.getQuantity(),
                 orderItem.totalPrice().getAmount());
     }
