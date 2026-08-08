@@ -14,6 +14,8 @@ bin/
 node_modules/
 dist/
 *.local
+# Vite가 의존성을 미리 묶어두는 캐시. 매 실행마다 이름이 바뀌는 임시 폴더가 생긴다.
+.vite/
 
 # 환경변수
 .env
